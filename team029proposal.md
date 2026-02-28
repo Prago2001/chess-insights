@@ -1,21 +1,15 @@
-# ChessInsight: Visual Exploration of Gameplay Dynamics
+### ChessInsight: Visual Exploration of Gameplay Dynamics
 **Team 029 | <a id="A">(A)</a>Nareshkumar Prakash Kumar Jamnani, <a id="B">(B)</a>Pratik Narayan Gokhale, <a id="C">(C)</a>Maitreyi Mhaiskar, <a id="D">(D)</a>Kartik Dutt, <a id="E">(E)</a>Shashankkumar Shailendrakumar Mittal**
 
 ---
 
-## 1. Introduction & Problem Statement
+#### 1. Introduction & Problem Statement
 
-**What are we trying to do?**  
-We will build an interactive visual analytics system that reveals how chess game patterns—time usage, move complexity, and blunders—differ across skill levels, and predicts player skill from game behavior.
+**What are we trying to do?**: We will build an interactive visual analytics system that shows how chess game patterns like time usage, move complexity, and blunders vary across skill levels, and predicts player's skill from game behavior.  
+**How is it done today?**: The tools available today, such as Lichess analysis boards and Chess.com, focus on analyzing single games move by move using chess engines; however, they lack aggregated pattern analysis across thousands of games and cannot explain why players at different skill levels behave differently. Maia Chess [1](#ref-1) shows that human play can be modeled but does not have an interactive user interface. Research on skill prediction [2](#ref-2), [3](#ref-3) has achieved 83% accuracy in classifying game outcomes but does not reveal behavioral patterns in a visual manner.  
+**Who cares?**: Millions of active chess players, chess coaches, analysts, researchers, scientists, and curious fans can benefit by exploring patterns in gameplay, identifying recurring mistakes, and understanding how players of different skill levels behave across various phases of the game.
 
-**How is it done today?**  
-The tools available today, such as Lichess analysis boards and Chess.com, focus on analyzing single games move by move using chess engines; however, they lack aggregated pattern analysis across thousands of games and cannot explain why players at different skill levels behave differently. Maia Chess [1](#ref-1) shows that human play can be modeled but does not have an interactive user interface. Research on skill prediction [2](#ref-2), [3](#ref-3) has achieved 83% accuracy in classifying game outcomes but does not reveal behavioral patterns in a visual manner.
-
-**Who cares?**  
-Millions of active chess players, chess coaches, analysts, researchers, scientists, and curious fans can benefit by exploring patterns in gameplay, identifying recurring mistakes, and understanding how players of different skill levels behave across various phases of the game.
-
-
-## 2. Literature Survey
+#### 2. Literature Survey
 
 **Player Modeling & Skill Prediction**: McIlroy-Young et al. [1](#ref-1) introduced Maia Chess, training neural networks to predict moves at specific skill levels (1100–1900 Elo). Their Maia-2 work [4](#ref-4) extended this with skill-aware attention mechanisms. Kaushik et al. [2](#ref-2) used gradient boosting to classify game outcomes with 83% accuracy, while Sharma et al. [3](#ref-3) applied CNN–LSTM architectures achieving a mean absolute error of 182 rating points. These research papers provide strong modeling approaches but do not offer an interactive user interface for exploring patterns.  
 **Time Pressure & Decision Making**: Van Harreveld et al. [5](#ref-5) showed that time pressure slows down deep thinking but keeps quick pattern recognition intact. Studies by Künn et al. [6](#ref-6) indicated that less thinking time leads players to make safer moves. These studies help us in designing our features, but both lack an interactive user interface.  
@@ -25,47 +19,35 @@ Millions of active chess players, chess coaches, analysts, researchers, scientis
 **Visual Analytics for Chess**: Lu and Wang [14](#ref-14) proposed a visual interactive tool displaying how a single game evolves over time with linked views, which aligns with our goal to use visual analytics, but it focuses only on a single game at a time. García-Díaz and Mariscal-Quintero [15](#ref-15) propose visual tools to study and analyze elite players’ decisions, which aligns with our objective of understanding player behavior.
 
 
-## 3. Proposed Approach & Innovation
+#### 3. Proposed Approach & Innovation
 
-**What’s new? Why will it succeed?**
+**What’s new? Why will it succeed?** From an *Algorithmic Innovation* point of view, we will do the following:  1) **Skill Tier Classification** – We will train models that can infer which skill group a player belongs to using features such as time usage in different phases of the game, number of blunders made (after adjusting for move complexity), and engine scores evaluating the aggression of their opening moves.  2) **Behavioral Pattern Clustering** – Using clustering algorithms on aggregated behavioral vectors, we will identify recurring player archetypes (for example, “time scrambler,” “positional grinder”). This represents one of the first systematic attempts to derive chess-specific behavioral clusters from large-scale data.
+On the other hand, from a *Visual Innovation* perspective, we will build an interactive dashboard that lets users: 1) See a 2D map of players where nearby points have similar behavior, 2) View time-usage heatmaps in different phases of the game across different skill levels, and 3) Explore an interactive network graph where users can filter by skill level to see which opening moves and lines are popular, risky, or safe in particular groups of players.
 
-**Algorithmic Innovation**  
-1. **Skill Tier Classification** – We will train models that can infer which skill group a player belongs to using features such as time usage in different phases of the game, number of blunders made (after adjusting for move complexity), and engine scores evaluating the aggression of their opening moves.  
-2. **Behavioral Pattern Clustering** – Using clustering algorithms on aggregated behavioral vectors, we will identify recurring player archetypes (for example, “time scrambler,” “positional grinder”). This represents one of the first systematic attempts to derive chess-specific behavioral clusters from large-scale data.
-
-**Visualization Innovation**  
-We will build an interactive dashboard that lets users:
-- See a 2D map of players where nearby points have similar behavior.  
-- View time-usage heatmaps in different phases of the game across different skill levels.  
-- Explore an interactive network graph where users can filter by skill level to see which opening moves and lines are popular, risky, or safe in particular groups of players.
-
-
-## 4. Impact & Measurement
+#### 4. Impact & Measurement
 
 **Impact**: Using this dashboard, players, coaches, and analysts will be able to see behavior patterns across thousands of games. Players can gain a better understanding of their strengths and weaknesses, and these insights can be used to create better training plans.  
 **Measurement**  The improvement in rating, reduction in the number of blunders, and improvement in time-management skills of players can be used to determine whether the tool is successful in helping chess players.
 
 
-## 5. Risks & Payoffs
+#### 5. Risks & Payoffs
 
 **Risks**: Features may not sufficiently distinguish skill tiers, which may lead to poor classification performance. Clusters may be difficult to interpret, which would reduce their usefulness to coaches and players. Visualization complexity may hinder usability and overwhelm users.  
 **Payoffs**: Players and coaches can see clear patterns in gameplay. Insights can be used to create targeted and efficient training plans.
 
-## 6. Cost & Timeline
+#### 6. Cost & Timeline
 
 The project will incur no direct data cost because the Lichess dataset is free, and we will use our own machines and Georgia Tech GitHub for collaboration. If we decide to host our web application and machine learning models, additional infrastructure costs may be incurred.
 
-**Timeline:** 8 weeks total (see Gantt chart below) starting from `2nd March 2026`.
-
-### Gantt Chart
+**Timeline:** 8 weeks total (see **Gantt chart** below) starting from *2nd March 2026*
 
 | Task                 | Member | W1  | W2  | W3  | W4  | W5  | W6  | W7  | W8  |
 | -------------------- | ------ | --- | --- | --- | --- | --- | --- | --- | --- |
-| Data & Features      | All    | ■   | ■   |     |     |     |     |     |     |
-| Clustering           | [A](#A), [E](#E)   |     |     | ■   | ■   |     |     |     |     |
-| Classification       | [C](#C), [D](#D)  |     |     | ■   | ■   |     |     |     |     |
-| Visualization        | [B](#B)      |     |     |     | ■   | ■   | ■   |     |     |
-| Integration & Report | All    |     |     |     |     |     | ■   | ■   | ■   |
+| Data & Features      | All    | $\blacksquare$   | $\blacksquare$   |     |     |     |     |     |     |
+| Clustering           | [A](#A), [E](#E)   |     |     | $\blacksquare$   | $\blacksquare$   |     |     |     |     |
+| Classification       | [C](#C), [D](#D)  |     |     | $\blacksquare$   | $\blacksquare$   |     |     |     |     |
+| Visualization        | [B](#B)      |     |     |     | $\blacksquare$   | $\blacksquare$   | $\blacksquare$   |     |     |
+| Integration & Report | All    |     |     |     |     |     | $\blacksquare$   | $\blacksquare$   | $\blacksquare$   |
 
 **Milestones**  
 Midterm: Working classifier with >50% accuracy plus initial clusters.  
@@ -73,8 +55,9 @@ Final: Deliver a complete interactive dashboard and reach at least 65% classific
 
 **Effort Statement**: Member [A](#A) recorded the project proposal video, members [B](#B) and [C](#C) drafted the project proposal document and members [D](#D) and [E](#E) created the project proposal presentation slides. All team members contributed equally to the literature survey. 
 
+---
 
-## References
+#### References
 
 1. <a id="ref-1"></a> McIlroy-Young, R., et al. “Aligning Superhuman AI with Human Behavior: Chess as a Model System.” *KDD*, 2020. <https://www.cs.toronto.edu/~ashton/pubs/maia-kdd2020.pdf>  
 
