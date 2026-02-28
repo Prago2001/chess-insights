@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>ChessInsight&colon; Visual Exploration of Gameplay Dynamics</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 11px;
+                line-height: 1.2;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="chessinsight-visual-exploration-of-gameplay-dynamics">ChessInsight: Visual Exploration of Gameplay Dynamics</h1>
+<p><strong>Team 029 | <a id="A">(A)</a>Nareshkumar Prakash Kumar Jamnani, <a id="B">(B)</a>Pratik Narayan Gokhale, <a id="C">(C)</a>Maitreyi Mhaiskar, <a id="D">(D)</a>Kartik Dutt, <a id="E">(E)</a>Shashankkumar Shailendrakumar Mittal</strong></p>
+<hr>
+<h2 id="1-introduction--problem-statement">1. Introduction &amp; Problem Statement</h2>
+<p><strong>What are we trying to do?</strong><br>
+We will build an interactive visual analytics system that reveals how chess game patterns—time usage, move complexity, and blunders—differ across skill levels, and predicts player skill from game behavior.</p>
+<p><strong>How is it done today?</strong><br>
+The tools available today, such as Lichess analysis boards and <a href="http://Chess.com">Chess.com</a>, focus on analyzing single games move by move using chess engines; however, they lack aggregated pattern analysis across thousands of games and cannot explain why players at different skill levels behave differently. Maia Chess <a href="#ref-1">1</a> shows that human play can be modeled but does not have an interactive user interface. Research on skill prediction <a href="#ref-2">2</a>, <a href="#ref-3">3</a> has achieved 83% accuracy in classifying game outcomes but does not reveal behavioral patterns in a visual manner.</p>
+<p><strong>Who cares?</strong><br>
+Millions of active chess players, chess coaches, analysts, researchers, scientists, and curious fans can benefit by exploring patterns in gameplay, identifying recurring mistakes, and understanding how players of different skill levels behave across various phases of the game.</p>
+<h2 id="2-literature-survey">2. Literature Survey</h2>
+<p><strong>Player Modeling &amp; Skill Prediction</strong>: McIlroy-Young et al. <a href="#ref-1">1</a> introduced Maia Chess, training neural networks to predict moves at specific skill levels (1100–1900 Elo). Their Maia-2 work <a href="#ref-4">4</a> extended this with skill-aware attention mechanisms. Kaushik et al. <a href="#ref-2">2</a> used gradient boosting to classify game outcomes with 83% accuracy, while Sharma et al. <a href="#ref-3">3</a> applied CNN–LSTM architectures achieving a mean absolute error of 182 rating points. These research papers provide strong modeling approaches but do not offer an interactive user interface for exploring patterns.<br>
+<strong>Time Pressure &amp; Decision Making</strong>: Van Harreveld et al. <a href="#ref-5">5</a> showed that time pressure slows down deep thinking but keeps quick pattern recognition intact. Studies by Künn et al. <a href="#ref-6">6</a> indicated that less thinking time leads players to make safer moves. These studies help us in designing our features, but both lack an interactive user interface.<br>
+<strong>Clustering &amp; Playing Styles</strong>: Drachen et al. <a href="#ref-7">7</a> and Sifa et al. <a href="#ref-8">8</a> use clustering algorithms to group players according to different playing styles. These approaches are applied to a variety of online and mobile games but remain unexplored in the game of chess. Challet and Maillet <a href="#ref-9">9</a> use graph-based algorithms to score the complexities of opening moves of different chess players.<br>
+<strong>Behavioral Stylometry &amp; Knowledge Graphs</strong>: McIlroy-Young et al. <a href="#ref-10">10</a> use transformers to identify individual players from game sequences, suggesting that player behavior can be determined from the moves made by the player, but this work lacks visual interpretability. Similarly, a 2025 study <a href="#ref-11">11</a> created a behavior-based knowledge graph to predict the next moves of players.<br>
+<strong>Blunder Prediction &amp; Time Management</strong>: A recently published study <a href="#ref-12">12</a> proposes a predictive model to predict blunders in chess, but its shortcoming is that it operates per game rather than across aggregated player populations. Guga et al. <a href="#ref-13">13</a> train a machine learning model on features such as remaining time and position complexity to predict how long a player should think on each move. This directly influences our phase-wise time features, but they do not connect time behavior to skill tiers or blunders.<br>
+<strong>Visual Analytics for Chess</strong>: Lu and Wang <a href="#ref-14">14</a> proposed a visual interactive tool displaying how a single game evolves over time with linked views, which aligns with our goal to use visual analytics, but it focuses only on a single game at a time. García-Díaz and Mariscal-Quintero <a href="#ref-15">15</a> propose visual tools to study and analyze elite players’ decisions, which aligns with our objective of understanding player behavior.</p>
+<h2 id="3-proposed-approach--innovation">3. Proposed Approach &amp; Innovation</h2>
+<p><strong>What’s new?</strong></p>
+<p><strong>Algorithmic Innovation</strong></p>
+<ol>
+<li><strong>Skill Tier Classification</strong> – We will train models that can infer which skill group a player belongs to using features such as time usage in different phases of the game, number of blunders made (after adjusting for move complexity), and engine scores evaluating the aggression of their opening moves.</li>
+<li><strong>Behavioral Pattern Clustering</strong> – Using clustering algorithms on aggregated behavioral vectors, we will identify recurring player archetypes (for example, “time scrambler,” “positional grinder”). This represents one of the first systematic attempts to derive chess-specific behavioral clusters from large-scale data.</li>
+</ol>
+<p><strong>Visualization Innovation</strong><br>
+We will build an interactive dashboard that lets users:</p>
+<ul>
+<li>See a 2D map of players where nearby points have similar behavior.</li>
+<li>View time-usage heatmaps in different phases of the game across different skill levels.</li>
+<li>Explore an interactive network graph where users can filter by skill level to see which opening moves and lines are popular, risky, or safe in particular groups of players.</li>
+</ul>
+<h2 id="4-impact--measurement">4. Impact &amp; Measurement</h2>
+<p><strong>Impact</strong>: Using this dashboard, players, coaches, and analysts will be able to see behavior patterns across thousands of games. Players can gain a better understanding of their strengths and weaknesses, and these insights can be used to create better training plans.<br>
+<strong>Measurement</strong>  The improvement in rating, reduction in the number of blunders, and improvement in time-management skills of players can be used to determine whether the tool is successful in helping chess players.</p>
+<h2 id="5-risks--payoffs">5. Risks &amp; Payoffs</h2>
+<p><strong>Risks</strong>: Features may not sufficiently distinguish skill tiers, which may lead to poor classification performance. Clusters may be difficult to interpret, which would reduce their usefulness to coaches and players. Visualization complexity may hinder usability and overwhelm users.<br>
+<strong>Payoffs</strong>: Players and coaches can see clear patterns in gameplay. Insights can be used to create targeted and efficient training plans.</p>
+<h2 id="6-cost--timeline">6. Cost &amp; Timeline</h2>
+<p>The project will incur no direct data cost because the Lichess dataset is free, and we will use our own machines and Georgia Tech GitHub for collaboration. If we decide to host our web application and machine learning models, additional infrastructure costs may be incurred.</p>
+<p><strong>Timeline:</strong> 8 weeks total (see Gantt chart below) starting from <code>2nd March 2026</code>.</p>
+<h3 id="gantt-chart">Gantt Chart</h3>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Member</th>
+<th>W1</th>
+<th>W2</th>
+<th>W3</th>
+<th>W4</th>
+<th>W5</th>
+<th>W6</th>
+<th>W7</th>
+<th>W8</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Data &amp; Features</td>
+<td>All</td>
+<td>■</td>
+<td>■</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Clustering</td>
+<td><a href="#A">A</a>, <a href="#E">E</a></td>
+<td></td>
+<td></td>
+<td>■</td>
+<td>■</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Classification</td>
+<td><a href="#C">C</a>, <a href="#D">D</a></td>
+<td></td>
+<td></td>
+<td>■</td>
+<td>■</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Visualization</td>
+<td><a href="#B">B</a></td>
+<td></td>
+<td></td>
+<td></td>
+<td>■</td>
+<td>■</td>
+<td>■</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Integration &amp; Report</td>
+<td>All</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>■</td>
+<td>■</td>
+<td>■</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Milestones</strong><br>
+Midterm: Working classifier with &gt;50% accuracy plus initial clusters.<br>
+Final: Deliver a complete interactive dashboard and reach at least 65% classification accuracy.</p>
+<p><strong>Effort Statement</strong>: Member <a href="#A">A</a> recorded the project proposal video, members <a href="#B">B</a> and <a href="#C">C</a> drafted the project proposal document and members <a href="#D">D</a> and <a href="#E">E</a> created the project proposal presentation slides.</p>
+<h2 id="references">References</h2>
+<ol>
+<li>
+<p><a id="ref-1"></a> McIlroy-Young, R., et al. “Aligning Superhuman AI with Human Behavior: Chess as a Model System.” <em>KDD</em>, 2020. <a href="https://www.cs.toronto.edu/~ashton/pubs/maia-kdd2020.pdf">https://www.cs.toronto.edu/~ashton/pubs/maia-kdd2020.pdf</a></p>
+</li>
+<li>
+<p><a id="ref-2"></a> Kaushik, A., et al. “Machine Learning Approaches for Classifying Chess Game Outcomes.” <em>Electronics</em>, 2025. <a href="https://www.mdpi.com/2079-9292/15/1/1">https://www.mdpi.com/2079-9292/15/1/1</a></p>
+</li>
+<li>
+<p><a id="ref-3"></a> Perez, J., et al. “Chess Rating Estimation from Moves and Clock Times Using a CNN-LSTM.” <em>arXiv</em>, 2024. <a href="https://arxiv.org/abs/2409.11506">https://arxiv.org/abs/2409.11506</a></p>
+</li>
+<li>
+<p><a id="ref-4"></a> Tang, Z., et al. “Maia-2: A Unified Model for Human–AI Alignment in Chess.” <em>NeurIPS</em>, 2024. <a href="https://www.cs.toronto.edu/~ashton/pubs/maia2-neurips2024.pdf">https://www.cs.toronto.edu/~ashton/pubs/maia2-neurips2024.pdf</a></p>
+</li>
+<li>
+<p><a id="ref-5"></a> van Harreveld, F., et al. “The Effects of Time Pressure on Chess Skill.” <em>Psychological Science</em>, 2007. <a href="https://pubmed.ncbi.nlm.nih.gov/17186308/">https://pubmed.ncbi.nlm.nih.gov/17186308/</a></p>
+</li>
+<li>
+<p><a id="ref-6"></a> Künn, S., et al. “Time Pressure and Strategic Risk-Taking in Professional Chess.” <em>Journal of Economic Behavior &amp; Organization</em>, 2025. <a href="https://www.sciencedirect.com/science/article/pii/S0167268125003373">https://www.sciencedirect.com/science/article/pii/S0167268125003373</a></p>
+</li>
+<li>
+<p><a id="ref-7"></a> Drachen, A., et al. “Clustering of Player Behavior in Computer Games in the Wild.” <em>CIG</em>, 2012. <a href="https://andersdrachen.files.wordpress.com/2014/07/gunsswordsanddataclustering-of-player-behavior-in-computer-games-in-the-wild_cig2012.pdf">https://andersdrachen.files.wordpress.com/2014/07/gunsswordsanddataclustering-of-player-behavior-in-computer-games-in-the-wild_cig2012.pdf</a></p>
+</li>
+<li>
+<p><a id="ref-8"></a> Sifa, R., et al. “Clustering Mixed-Type Player Behavior Data for Churn Prediction.” <em>Central European Journal of Operations Research</em>, 2022. <a href="https://link.springer.com/article/10.1007/s10100-022-00802-8">https://link.springer.com/article/10.1007/s10100-022-00802-8</a></p>
+</li>
+<li>
+<p><a id="ref-9"></a> Challet, D., &amp; Maillet, M. “Quantifying the Complexity and Similarity of Chess Openings.” <em>Nature Scientific Reports</em>, 2023. <a href="https://www.nature.com/articles/s41598-023-31658-w">https://www.nature.com/articles/s41598-023-31658-w</a></p>
+</li>
+<li>
+<p><a id="ref-10"></a> McIlroy-Young, R., et al. “Detecting Individual Decision-Making Style: Exploring Behavioral Stylometry in Chess.” <em>NeurIPS</em>, 2021. <a href="https://proceedings.neurips.cc/paper_files/paper/2021/hash/ccf8111910291ba472b385e9c5f59099-Abstract.html">https://proceedings.neurips.cc/paper_files/paper/2021/hash/ccf8111910291ba472b385e9c5f59099-Abstract.html</a></p>
+</li>
+<li>
+<p><a id="ref-11"></a> Skidanov, B., et al. “A Behavior-Based Knowledge Representation Improves Prediction in Chess.” <em>arXiv</em>, 2025. <a href="https://arxiv.org/html/2504.05425v1">https://arxiv.org/html/2504.05425v1</a></p>
+</li>
+<li>
+<p><a id="ref-12"></a> Rokach, Y., &amp; Shapira, B. “Blunder Prediction in Chess.” <em>Applied Intelligence</em>, 56(4), 2026. <a href="https://doi.org/10.1007/s10489-026-07131-2">https://doi.org/10.1007/s10489-026-07131-2</a></p>
+</li>
+<li>
+<p><a id="ref-13"></a> Guga, J., et al. “Time Management in a Chess Game Through Machine Learning.” <em>CIS, Temple University</em>. <a href="https://cis.temple.edu/~wu/research/publications/Publication_files/Paper_Guga.pdf">https://cis.temple.edu/~wu/research/publications/Publication_files/Paper_Guga.pdf</a></p>
+</li>
+<li>
+<p><a id="ref-14"></a> Lu, M., &amp; Wang, G. “Chess Evolution Visualization.” <em>IEEE VIS</em>, 2014. <a href="https://pubmed.ncbi.nlm.nih.gov/26357293/">https://pubmed.ncbi.nlm.nih.gov/26357293/</a></p>
+</li>
+<li>
+<p><a id="ref-15"></a> García-Díaz, P. R., &amp; Mariscal-Quintero, R. “Visual Analytics as a Cognitive Microscope in Elite Chess.” <em>TechRxiv</em>, February 17, 2026. DOI: <a href="https://doi.org/10.36227/techrxiv.177130687.71691368/v1">https://doi.org/10.36227/techrxiv.177130687.71691368/v1</a></p>
+</li>
+</ol>
+
+            
+            
+        </body>
+        </html>
