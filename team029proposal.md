@@ -27,7 +27,7 @@ Millions of active chess players, chess coaches, analysts, researchers, scientis
 
 ## 3. Proposed Approach & Innovation
 
-**What’s new?**
+**What’s new? Why will it succeed?**
 
 **Algorithmic Innovation**  
 1. **Skill Tier Classification** – We will train models that can infer which skill group a player belongs to using features such as time usage in different phases of the game, number of blunders made (after adjusting for move complexity), and engine scores evaluating the aggression of their opening moves.  
@@ -71,7 +71,7 @@ The project will incur no direct data cost because the Lichess dataset is free, 
 Midterm: Working classifier with >50% accuracy plus initial clusters.  
 Final: Deliver a complete interactive dashboard and reach at least 65% classification accuracy.  
 
-**Effort Statement**: Member [A](#A) recorded the project proposal video, members [B](#B) and [C](#C) drafted the project proposal document and members [D](#D) and [E](#E) created the project proposal presentation slides.  
+**Effort Statement**: Member [A](#A) recorded the project proposal video, members [B](#B) and [C](#C) drafted the project proposal document and members [D](#D) and [E](#E) created the project proposal presentation slides. All team members contributed equally to the literature survey. 
 
 
 ## References
