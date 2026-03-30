@@ -209,3 +209,4 @@ __marimo__/
 .DS_Store
 data/raw/data_1m_games.pgn
 data/raw/processed/*
+models/skill_classifier.pkl
