@@ -95,9 +95,8 @@ We also integrated a `compare_clustering_methods` helper that benchmarks k-means
 
 ##### 6.1 Summary of Progress
 
-This report marks the midpoint of ChessInsight, where our goal was to build an analytical backend capable of processing chess game data and generating supervised and unsupervised skill models, which has been successfully achieved.
-Using 350,060 annotated Lichess games (Elo 600–3,265), we generated 30 player-level features for 22,725 players with sufficient game history.
-These features capture four behavioral dimensions from prior research: time allocation across phases, position complexity and material dynamics, error rates, and opening tendencies [5,6,9,12,13].
+This report marks the midpoint of ChessInsight. Our goal for the first half of the semester was to build an analytical backend capable of processing chess game data and generating supervised and unsupervised skill models, which has been successfully achieved.
+Using 350,060 annotated Lichess games (Elo 600–3,265), we generated 30 player-level behavioral features for 22,725 players based on four dimensions from prior work: time allocation, position complexity and material dynamics, error rates, and opening tendencies [5,6,9,12,13].
 
 **Progress against stated midterm targets:**
 
@@ -111,19 +110,19 @@ We originally committed to a working classifier exceeding 50% accuracy and an in
 
 - **Interactive dashboard** remains the principal outstanding deliverable; the current output is a static matplotlib wireframe illustrating the intended layout.
 
-**Key finding — time as the primary behavioral signal:** Feature importance analysis shows that phase-wise time statistics account for ~57% of total importance, with middlegame average time alone contributing 16.4%, supporting our hypothesis that time allocation across game phases is a stronger indicator of skill than blunders or openings [5,6,13]. Error-rate features still provide secondary signal but appear underweighted due to heuristic computation without full Stockfish evaluation [12].
+**Key finding — time as the primary behavioral signal:** Feature importance shows phase-wise time statistics account for ~57% of model importance, with middlegame time contributing 16.4%, indicating time allocation is a stronger skill indicator than blunders or openings [5,6,13]. Error features provide weaker signal due to heuristic estimation without Stockfish evaluation [12].
 
-**Key finding — speed vs. deliberation as the dominant clustering axis:** Across the five archetypes, the main divide is between deliberate players (higher think times and variance, avg Elo ≈1453) and fast players who move quickly and are concentrated in Advanced–Expert tiers (avg Elo ≈1706–1774). This pattern aligns with cognitive research suggesting stronger players rely more on rapid pattern recognition, while intermediate players deliberate longer [5,6].
+**Key finding — speed vs. deliberation as the dominant clustering axis:** Across the five archetypes, the key divide is between deliberate players (higher think times, avg Elo ≈1453) and fast players concentrated in Advanced–Expert tiers (avg Elo ≈1706–1774), consistent with research showing stronger players rely more on rapid pattern recognition [5,6].
 
 ##### 6.2 Plan for the Remaining Semester
 
 The second half of the project has four clearly sequenced objectives:
 
 **1. Improve classification performance.**
-We will evaluate the ensemble classifier against the Random Forest baseline on the same test split using exact accuracy, adjacent accuracy, and macro F1, along with ablation experiments to measure the contribution of time-based features and interaction terms. If the ensemble fails to reach the 65% target, we will explore Elo regression as an alternative approach to avoid ambiguity in discrete skill-tier boundaries [2,3].
+We will evaluate the ensemble against the Random Forest baseline using exact accuracy, adjacent accuracy, and macro F1, with ablation tests for time-based and interaction features. If it fails to reach the 65% target, we will explore Elo regression to avoid ambiguity in discrete skill tiers [2,3].
 
 **2. Finalize and validate the clustering solution.**
-We will adopt Birch as the primary clustering algorithm and evaluate archetype stability using bootstrap resampling; if clusters vary significantly, we will adjust the number of clusters or apply stronger regularization. We will also examine whether the overlapping “Advanced Fast Player” sub-clusters are explained by different time controls (Bullet, Blitz, Rapid) rather than intrinsic behavioral differences [7,8].
+We will adopt Birch clustering and test archetype stability via bootstrap resampling, adjusting cluster count or regularization if instability appears. We will also examine whether overlapping “Advanced Fast Player” clusters reflect different time controls (Bullet, Blitz, Rapid) rather than behavioral differences [7,8].
 
 **3. Implement the interactive dashboard.**
 The frontend will use pre-computed artifacts (t-SNE embeddings, cluster statistics, and feature importance) to render three key views—a behavioral map, a tier × phase time-usage heatmap, and an archetype comparison panel—allowing users to locate players in behavioral space, compare time-use patterns, and interpret archetype–skill relationships [14,15].
@@ -142,8 +141,7 @@ Three risks warrant active monitoring in the second half of the project:
 **Dashboard delivery timeline.** Since building a polished linked-view dashboard is the most time-intensive task, we will prioritize the three core views and treat additional visualizations as stretch goals, while using pre-computed artifacts so frontend development can proceed without rerunning the full pipeline [14,15].
 
 #### 7. Effort Statement
-
-All five team members have contributed roughly equal effort during the first half of the project, spanning literature review, data processing, model development, and documentation. Going forward, we anticipate a similar distribution, with individual focus areas shifting toward dashboard development, model evaluation, and final write-up as the semester progresses.
+All five team members contributed equally to literature review, data processing, modeling, and documentation, and will continue sharing effort while focusing on dashboard development, evaluation, and the final report.
 
 #### References
 
