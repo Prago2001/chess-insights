@@ -127,7 +127,7 @@ We will report calibration curves and top-2 tier accuracy to assess model confid
 ##### 6.3 Risks and Mitigation Strategies
 Three risks warrant active monitoring in the second half of the project:
 
-**Classification accuracy ceiling.** BBecause Elo tier boundaries are fuzzy (e.g., 1598 vs. 1602 in different tiers), exact-tier accuracy may have a ceiling, so we will test the ensemble, improve features with engine evaluations, or shift to Elo regression or two-tier classification if needed [2,3].
+**Classification accuracy ceiling.** Because Elo tier boundaries are fuzzy (e.g., 1598 vs. 1602 in different tiers), exact-tier accuracy may have a ceiling, so we will test the ensemble, improve features with engine evaluations, or shift to Elo regression or two-tier classification if needed [2,3].
 
 **Quality of heuristic accuracy features.** Because centipawn loss and blunder rates are heuristic approximations without engine analysis, we will test whether running Stockfish on a stratified sample improves feature quality and model performance within available compute time [12].
 
