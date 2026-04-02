@@ -1,93 +1,61 @@
-# ChessInsight Progress Report – Team 029
-
-**Team Members:** Nareshkumar Prakash Kumar Jamnani, Pratik Narayan Gokhale, Maitreyi Mhaiskar, Kartik Dutt, Shashankkumar Shailendrakumar Mittal
+### ChessInsight: Visual Exploration of Gameplay Dynamics
+**Team 029 | <a id="A">(A)</a>Nareshkumar Prakash Kumar Jamnani, <a id="B">(B)</a>Pratik Narayan Gokhale, <a id="C">(C)</a>Maitreyi Mhaiskar, <a id="D">(D)</a>Kartik Dutt, <a id="E">(E)</a>Shashankkumar Shailendrakumar Mittal**
 
 ---
 
-## 1. Introduction
+#### 1. Introduction
 
-ChessInsight aims to build an interactive visual analytics system that reveals how chess gameplay patterns—such as time usage, blunders, and position complexity—vary across skill levels, and to predict a player's skill tier from their behavioral traces rather than raw Elo. Existing tools such as Lichess analysis boards and Chess.com focus on analyzing single games move-by-move using chess engines; they lack aggregated pattern analysis across thousands of games and cannot explain why players at different skill levels behave differently [1, 2, 3].
+ChessInsight aims to build an interactive visual analytics system that reveals how chess gameplay patterns—such as time usage, blunders, and position complexity—vary across skill levels, and to predict a player's skill tier from their behavioral traces rather than raw Elo. Existing tools such as Lichess analysis boards and Chess.com focus on analyzing single games move-by-move using chess engines; they lack aggregated pattern analysis across thousands of games and cannot explain why players at different skill levels behave differently [1](#ref-1), [2](#ref-2), [3](#ref-3).
 
-Our system ingests a large Lichess PGN dataset (350,060 games), derives game- and player-level features, trains a skill-tier classifier, discovers player archetypes via clustering, and surfaces these results in a visualization-ready format for an interactive dashboard. This report summarizes our progress halfway through the semester and outlines remaining work and risks, following the course progress-report guidelines.
+Our system analyzes data from [Lichess dataset](https://database.lichess.org), extracts game- and player-level features, trains a classifier to predict skill tiers, identifies player archetypes through clustering, and presents the results on a web application.
 
-## 2. Problem Definition
+#### 2. Problem Definition
 
 We address two tightly coupled problems:
+1. **Behavior-aware skill inference.** Given a player's moves, clock times, and engine evaluations across many games, infer a discrete skill tier (Beginner, Intermediate, Advanced, Expert) that reflects *behavioral quality* rather than just rating [1](#ref-1), [2](#ref-2), [3](#ref-3).
+2. **Discovery of behavioral archetypes.** Using aggregated behavioral features, cluster players into interpretable archetypes (for example, "time scramblers," "positional grinders") that help coaches and players understand common patterns and failure modes [7](#ref-7), [8](#ref-8).  
+Formally, we model each player as a vector of aggregated statistics over their games (time usage per phase, position complexity, error rates, opening style), and we learn: 1)A supervised mapping from features to skill tiers using Elo-derived labels; 2)An unsupervised mapping from features to behavioral clusters using k-means.  
+The visual interface will support tasks such as exploring where a player lives in the behavioral map, how their time usage compares to peers, and which archetypes correlate with faster improvement [14](#ref-14), [15](#ref-15).
 
-1. **Behavior-aware skill inference.** Given a player's moves, clock times, and engine evaluations across many games, infer a discrete skill tier (Beginner, Intermediate, Advanced, Expert) that reflects *behavioral quality* rather than just rating [1, 2, 3].
-2. **Discovery of behavioral archetypes.** Using aggregated behavioral features, cluster players into interpretable archetypes (for example, "time scramblers," "positional grinders") that help coaches and players understand common patterns and failure modes [7, 8].
+#### 3. Literature Survey
 
-Formally, we model each player as a vector of aggregated statistics over their games (time usage per phase, position complexity, error rates, opening style), and we learn:
+**Player Modeling & Skill Prediction**: McIlroy-Young et al. [1](#ref-1) introduced Maia Chess, training neural networks to predict moves at specific skill levels (1100–1900 Elo). Their Maia-2 work [4](#ref-4) extended this with skill-aware attention mechanisms. Kaushik et al. [2](#ref-2) used gradient boosting to classify game outcomes with 83% accuracy, while Sharma et al. [3](#ref-3) applied CNN–LSTM architectures achieving a mean absolute error of 182 rating points. These research papers provide strong modeling approaches but do not offer an interactive user interface for exploring patterns.  
+**Time Pressure & Decision Making**: Van Harreveld et al. [5](#ref-5) showed that time pressure slows down deep thinking but keeps quick pattern recognition intact. Studies by Künn et al. [6](#ref-6) indicated that less thinking time leads players to make safer moves. These studies help us in designing our features, but both lack an interactive user interface.  
+**Clustering & Playing Styles**: Drachen et al. [7](#ref-7) and Sifa et al. [8](#ref-8) use clustering algorithms to group players according to different playing styles. These approaches are applied to a variety of online and mobile games but remain unexplored in the game of chess. Challet and Maillet [9](#ref-9) use graph-based algorithms to score the complexities of opening moves of different chess players.  
+**Behavioral Stylometry & Knowledge Graphs**: McIlroy-Young et al. [10](#ref-10) use transformers to identify individual players from game sequences, suggesting that player behavior can be determined from the moves made by the player, but this work lacks visual interpretability. Similarly, a 2025 study [11](#ref-11) created a behavior-based knowledge graph to predict the next moves of players.  
+**Blunder Prediction & Time Management**: A recently published study [12](#ref-12) proposes a predictive model to predict blunders in chess, but its shortcoming is that it operates per game rather than across aggregated player populations. Guga et al. [13](#ref-13) train a machine learning model on features such as remaining time and position complexity to predict how long a player should think on each move. This directly influences our phase-wise time features, but they do not connect time behavior to skill tiers or blunders.  
+**Visual Analytics for Chess**: Lu and Wang [14](#ref-14) proposed a visual interactive tool displaying how a single game evolves over time with linked views, which aligns with our goal to use visual analytics, but it focuses only on a single game at a time. García-Díaz and Mariscal-Quintero [15](#ref-15) propose visual tools to study and analyze elite players’ decisions, which aligns with our objective of understanding player behavior.
 
-- A supervised mapping from features to skill tiers using Elo-derived labels.
-- An unsupervised mapping from features to behavioral clusters using k-means and related algorithms.
+#### 4. Proposed Method and Current Implementation
 
-The downstream visual interface will support tasks such as exploring where a player lives in the behavioral map, how their time usage compares to peers, and which archetypes correlate with faster improvement [14, 15].
+Our proposed pipeline has the below mentioned four main components:
 
-## 3. Literature Survey (Current Status)
+##### 4.1 Data Ingestion and Preprocessing
+We ingest a Lichess PGN file containing **350,060** games and parse moves and clock times for both players. We identify **238,200** unique player handles in the raw PGNs and aggregate per-player feature vectors for **22,725** players who have sufficient game history. The full pipeline runs on a laptop in under ten minutes using cached chunk-based parsing.
 
-We have completed an initial literature survey covering five themes:
+##### 4.2 Feature Extraction
+We extract **39 game-level features** and aggregate them to **30 player-level features** used by both the classifier and clustering modules. These include: 1)Average move times and time variance in opening, middlegame, and endgame; 2)Frequency of low-time moves and time-trouble episodes; 3)Engine-derived position complexity, centipawn loss, blunder and mistake rates; 4)Opening aggression, piece activity, and material imbalance frequencies.
 
-- **Player modeling and skill prediction.** McIlroy-Young et al. [1] introduced Maia Chess, training neural networks to predict moves at specific Elo ranges (1100–1900). Their follow-up Maia-2 work [4] extended this with skill-aware attention mechanisms. Kaushik et al. [2] used gradient boosting to classify game outcomes with 83% accuracy, while Sharma et al. [3] applied CNN–LSTM architectures achieving a mean absolute error of 182 rating points. These works provide strong modeling approaches but do not offer an interactive user interface for exploring patterns.
-- **Time pressure and decision making.** Van Harreveld et al. [5] showed that time pressure slows deep thinking but keeps quick pattern recognition intact. Künn et al. [6] showed that less thinking time leads players toward safer moves. These studies inform our choice of phase-wise time-usage and time-trouble features.
-- **Clustering and playing styles.** Drachen et al. [7] and Sifa et al. [8] use clustering algorithms to group players by playing style across online and mobile games; these approaches remain unexplored in chess. Challet and Maillet [9] quantify the complexity and similarity of chess openings using graph-based algorithms, motivating our complexity features.
-- **Behavioral stylometry and knowledge graphs.** McIlroy-Young et al. [10] use transformers to identify individual players from game sequences, demonstrating that behavior is fingerprinted in moves. A 2025 study [11] constructed a behavior-based knowledge graph to predict next moves. Both works lack visual interpretability.
-- **Blunder prediction and time management.** Rokach and Shapira [12] propose a blunder-prediction model that operates per game rather than across aggregated populations. Guga et al. [13] use remaining time and position complexity to predict optimal think time per move, directly influencing our phase-wise time features.
-- **Visual analytics for chess.** Lu and Wang [14] proposed a visual interactive tool for single-game evolution with linked views. García-Díaz and Mariscal-Quintero [15] propose visual tools to study elite players' decisions. Neither provides large-scale, population-level dashboards for mixed-strength online players.
+##### 4.3 Skill-Tier Classification
 
-Before the final report, we plan to expand the survey with additional visual analytics and clustering papers, and tighten the mapping from each paper's contributions to specific design and modeling choices in ChessInsight.
+We implement a **random forest classifier** that predicts four discrete skill tiers (Beginner, Intermediate, Advanced, Expert) from behavioral features. We construct a labeled dataset with **328,961** samples and **18** selected features, balanced across tiers using SMOTE in the training set. The data is split into **230,272** training, **49,344** validation, and **49,345** test samples. Class distribution before resampling is skewed toward Advanced and Intermediate players, but all four tiers are well represented. The fitted model, feature importance table, confusion matrix, and a summary of key metrics are saved for evaluation and reproducibility.
 
-## 4. Proposed Method and Current Implementation
+##### 4.4 Behavioral Clustering
 
-Our proposed pipeline has four main components—data and feature processing, skill-tier classification, behavioral clustering, and interactive visualization. As of this progress report, the first three components are implemented end-to-end, and the visualization layer has initial wireframes and static plots.
+We aggregate player-level features and run behavioral clustering to discover archetypes by following these steps: 1)Standardize features and apply PCA to 10 components, which explain about 88% of variance in the current run; 2)Evaluate k in the range 3–7 with k-means using silhouette, Calinski–Harabasz, and Davies–Bouldin indices; k = 5 achieves the best silhouette score among the tested values; 3)Run final k-means with **k = 5**, then compute t-SNE embeddings for 2D visualization.
 
-### 4.1 Data Ingestion and Preprocessing
+##### 4.5 Visualization Assets
 
-- We ingest a Lichess PGN file containing **350,060** games and parse moves and clock times for both players.
-- We identify **238,200** unique player handles in the raw PGNs and aggregate per-player feature vectors for **22,725** players who have sufficient game history.
-- The full pipeline runs on a laptop in under ten minutes using cached chunk-based parsing.
-
-### 4.2 Feature Extraction
-
-We extract **39 game-level features** and aggregate them to **30 player-level features** used by both the classifier and clustering modules. These include:
-
-- Average move times and time variance in opening, middlegame, and endgame [13].
-- Frequency of low-time moves and time-trouble episodes [5, 6].
-- Engine-derived position complexity, centipawn loss, blunder and mistake rates [12].
-- Opening aggression, piece activity, and material imbalance frequencies [9].
-
-### 4.3 Skill-Tier Classification
-
-We implement a **random forest classifier** that predicts four discrete skill tiers (Beginner, Intermediate, Advanced, Expert) from behavioral features [2, 3].
-
-- We construct a labeled dataset with **328,961** samples and **18** selected features, balanced across tiers using SMOTE in the training set.
-- The data is split into **230,272** training, **49,344** validation, and **49,345** test samples.
-- Class distribution before resampling is skewed toward Advanced and Intermediate players, but all four tiers are well represented.
-- The fitted model, feature importance table, confusion matrix, and a summary of key metrics are saved for evaluation and reproducibility.
-
-### 4.4 Behavioral Clustering
-
-We aggregate player-level features and run behavioral clustering to discover archetypes [7, 8]:
-
-- Standardize features and apply PCA to 10 components, which explain about 88% of variance in the current run.
-- Evaluate k in the range 3–7 with k-means using silhouette, Calinski–Harabasz, and Davies–Bouldin indices; k = 5 achieves the best silhouette score among the tested values.
-- Run final k-means with **k = 5**, then compute t-SNE embeddings for 2D visualization.
-- Use the updated `name_clusters` logic to assign unique, behavior- and skill-aware archetype names to each cluster (for example, "Intermediate Deliberate Player", "Advanced Fast Player #2"), removing earlier label collisions.
-- Per-cluster statistics (size, Elo distribution, game counts, skill-tier mix, and key feature means) are stored as CSV summaries and JSON metadata for the dashboard.
-
-### 4.5 Visualization Assets
-
-While the interactive dashboard is not yet implemented, we have generated several static visualizations that directly support the eventual UI [14, 15]:
-
+While the interactive dashboard is not yet implemented, we have generated several static visualizations that directly support the eventual UI:
 - Overall skill-tier distribution plots.
 - Time-usage heatmaps by game phase and tier.
 - Confusion matrix and feature-importance bar charts for the classifier.
 - 2D cluster embedding scatterplots and bar charts of cluster-level characteristics.
-- A **dashboard wireframe** image sketching the intended layout: a behavioral map, a control panel for filters, and linked detail views for time usage and blunder statistics.
+- The dashboard layout will contain the following: a behavioral map, a control panel for filters, and linked detail views for time usage and blunder statistics.
 
-## 5. Evaluation (Current Results and Planned Work)
+#### 5. Evaluation (Current Results and Planned Work)
 
-### 5.1 Skill-Tier Classification Performance
+##### 5.1 Skill-Tier Classification Performance
 
 The current random forest baseline achieves:
 
@@ -104,7 +72,7 @@ Error analysis shows most mistakes occur between adjacent tiers (e.g., Intermedi
 - Add calibration curves and top-k tier accuracy to better quantify prediction uncertainty.
 - Conduct ablation studies to understand the contribution of time-based features [5, 6, 13] versus engine-based accuracy metrics [12].
 
-### 5.2 Clustering Quality and Interpretability
+##### 5.2 Clustering Quality and Interpretability
 
 The current k-means model with k = 5 yields:
 
@@ -114,7 +82,6 @@ The current k-means model with k = 5 yields:
 
 We observe several archetypal patterns, such as an **Intermediate Deliberate Player** cluster and multiple **Advanced Fast Player** clusters with slightly different Elo bands and sizes, capturing the trade-off between speed and deliberation at higher skill levels [7, 8].
 
-We have updated the `name_clusters` function to produce **unique, semantically richer archetype names** based on behavior and dominant skill tier, eliminating earlier name collisions.
 
 We also integrated a `compare_clustering_methods` helper that benchmarks k-means against Gaussian Mixture Models, hierarchical clustering, DBSCAN, and Birch on the same feature matrix. From the latest comparison, **Birch** achieves the highest silhouette score (≈0.29) and the lowest Davies–Bouldin index (≈1.02), outperforming k-means on these internal metrics, while k-means attains the highest Calinski–Harabasz score. We keep k-means as the primary pipeline method for now because it is simple and well-understood, and treat Birch as a promising alternative to explore further in the final phase.
 
@@ -124,9 +91,9 @@ We also integrated a `compare_clustering_methods` helper that benchmarks k-means
 - Investigate cluster stability under resampling and feature perturbations.
 - Validate interpretability via qualitative inspection and, if time permits, informal user feedback from chess-playing classmates [14, 15].
 
-## 6. Conclusions, Remaining Work, and Risks
+#### 6. Conclusions, Remaining Work, and Risks
 
-### 6.1 Summary of Progress
+##### 6.1 Summary of Progress
 
 This progress report represents the halfway point of ChessInsight's development. Our primary objective for the first half of the semester was to build a working analytical backend—one capable of ingesting raw game data, constructing behaviorally meaningful player representations, and producing both supervised and unsupervised models of skill. We are pleased to report that this objective has been met in full.
 
@@ -150,7 +117,7 @@ We originally committed to a working classifier exceeding 50% accuracy and an in
 
 ---
 
-### 6.2 Plan for the Remaining Semester
+##### 6.2 Plan for the Remaining Semester
 
 The second half of the project has four clearly sequenced objectives:
 
@@ -168,7 +135,7 @@ We will report calibration curves alongside accuracy metrics to characterize mod
 
 ---
 
-### 6.3 Risks and Mitigation Strategies
+##### 6.3 Risks and Mitigation Strategies
 
 Three risks warrant active monitoring in the second half of the project:
 
@@ -178,42 +145,42 @@ Three risks warrant active monitoring in the second half of the project:
 
 **Dashboard delivery timeline.** Implementing a polished, linked-view interactive interface is the most time-intensive remaining task. Our primary mitigation is to strictly scope the initial implementation to the three coordinated views described above and defer supplementary views (opening network, blunder heatmap) to the stretch-goal category. The pre-computed artifact store means the frontend team can develop and test views without re-running the full analysis pipeline [14, 15].
 
----
 
-### 6.4 Effort Statement
+#### 7. Effort Statement
 
 All five team members have contributed roughly equal effort during the first half of the project, spanning literature review, data processing, model development, and documentation. Going forward, we anticipate a similar distribution, with individual focus areas shifting toward dashboard development, model evaluation, and final write-up as the semester progresses.
 
+
 ---
 
-## References
+#### References
 
-1. McIlroy-Young, R., et al. "Aligning Superhuman AI with Human Behavior: Chess as a Model System." *KDD*, 2020. <https://www.cs.toronto.edu/~ashton/pubs/maia-kdd2020.pdf>
+1. <a id="ref-1"></a> McIlroy-Young, R., et al. “Aligning Superhuman AI with Human Behavior: Chess as a Model System.” *KDD*, 2020. <https://www.cs.toronto.edu/~ashton/pubs/maia-kdd2020.pdf>  
 
-2. Kaushik, A., et al. "Machine Learning Approaches for Classifying Chess Game Outcomes." *Electronics*, 2025. <https://www.mdpi.com/2079-9292/15/1/1>
+2. <a id="ref-2"></a> Kaushik, A., et al. “Machine Learning Approaches for Classifying Chess Game Outcomes.” *Electronics*, 2025. <https://www.mdpi.com/2079-9292/15/1/1>  
 
-3. Perez, J., et al. "Chess Rating Estimation from Moves and Clock Times Using a CNN-LSTM." *arXiv*, 2024. <https://arxiv.org/abs/2409.11506>
+3. <a id="ref-3"></a> Perez, J., et al. “Chess Rating Estimation from Moves and Clock Times Using a CNN-LSTM.” *arXiv*, 2024. <https://arxiv.org/abs/2409.11506>  
 
-4. Tang, Z., et al. "Maia-2: A Unified Model for Human–AI Alignment in Chess." *NeurIPS*, 2024. <https://www.cs.toronto.edu/~ashton/pubs/maia2-neurips2024.pdf>
+4. <a id="ref-4"></a> Tang, Z., et al. “Maia-2: A Unified Model for Human–AI Alignment in Chess.” *NeurIPS*, 2024. <https://www.cs.toronto.edu/~ashton/pubs/maia2-neurips2024.pdf>  
 
-5. van Harreveld, F., et al. "The Effects of Time Pressure on Chess Skill." *Psychological Science*, 2007. <https://pubmed.ncbi.nlm.nih.gov/17186308/>
+5. <a id="ref-5"></a> van Harreveld, F., et al. “The Effects of Time Pressure on Chess Skill.” *Psychological Science*, 2007. <https://pubmed.ncbi.nlm.nih.gov/17186308/>  
 
-6. Künn, S., et al. "Time Pressure and Strategic Risk-Taking in Professional Chess." *Journal of Economic Behavior & Organization*, 2025. <https://www.sciencedirect.com/science/article/pii/S0167268125003373>
+6. <a id="ref-6"></a> Künn, S., et al. “Time Pressure and Strategic Risk-Taking in Professional Chess.” *Journal of Economic Behavior & Organization*, 2025. <https://www.sciencedirect.com/science/article/pii/S0167268125003373>  
 
-7. Drachen, A., et al. "Clustering of Player Behavior in Computer Games in the Wild." *CIG*, 2012. <https://andersdrachen.files.wordpress.com/2014/07/gunsswordsanddataclustering-of-player-behavior-in-computer-games-in-the-wild_cig2012.pdf>
+7. <a id="ref-7"></a> Drachen, A., et al. “Clustering of Player Behavior in Computer Games in the Wild.” *CIG*, 2012. <https://andersdrachen.files.wordpress.com/2014/07/gunsswordsanddataclustering-of-player-behavior-in-computer-games-in-the-wild_cig2012.pdf>  
 
-8. Sifa, R., et al. "Clustering Mixed-Type Player Behavior Data for Churn Prediction." *Central European Journal of Operations Research*, 2022. <https://link.springer.com/article/10.1007/s10100-022-00802-8>
+8. <a id="ref-8"></a> Sifa, R., et al. “Clustering Mixed-Type Player Behavior Data for Churn Prediction.” *Central European Journal of Operations Research*, 2022. <https://link.springer.com/article/10.1007/s10100-022-00802-8>  
 
-9. Challet, D., & Maillet, M. "Quantifying the Complexity and Similarity of Chess Openings." *Nature Scientific Reports*, 2023. <https://www.nature.com/articles/s41598-023-31658-w>
+9. <a id="ref-9"></a> Challet, D., & Maillet, M. “Quantifying the Complexity and Similarity of Chess Openings.” *Nature Scientific Reports*, 2023. <https://www.nature.com/articles/s41598-023-31658-w>  
 
-10. McIlroy-Young, R., et al. "Detecting Individual Decision-Making Style: Exploring Behavioral Stylometry in Chess." *NeurIPS*, 2021. <https://proceedings.neurips.cc/paper_files/paper/2021/hash/ccf8111910291ba472b385e9c5f59099-Abstract.html>
+10. <a id="ref-10"></a> McIlroy-Young, R., et al. “Detecting Individual Decision-Making Style: Exploring Behavioral Stylometry in Chess.” *NeurIPS*, 2021. <https://proceedings.neurips.cc/paper_files/paper/2021/hash/ccf8111910291ba472b385e9c5f59099-Abstract.html>  
 
-11. Skidanov, B., et al. "A Behavior-Based Knowledge Representation Improves Prediction in Chess." *arXiv*, 2025. <https://arxiv.org/html/2504.05425v1>
+11. <a id="ref-11"></a> Skidanov, B., et al. “A Behavior-Based Knowledge Representation Improves Prediction in Chess.” *arXiv*, 2025. <https://arxiv.org/html/2504.05425v1>  
 
-12. Rokach, Y., & Shapira, B. "Blunder Prediction in Chess." *Applied Intelligence*, 56(4), 2026. <https://doi.org/10.1007/s10489-026-07131-2>
+12. <a id="ref-12"></a> Rokach, Y., & Shapira, B. “Blunder Prediction in Chess.” *Applied Intelligence*, 56(4), 2026. <https://doi.org/10.1007/s10489-026-07131-2>  
 
-13. Guga, J., et al. "Time Management in a Chess Game Through Machine Learning." *CIS, Temple University*. <https://cis.temple.edu/~wu/research/publications/Publication_files/Paper_Guga.pdf>
+13. <a id="ref-13"></a> Guga, J., et al. “Time Management in a Chess Game Through Machine Learning.” *CIS, Temple University*. <https://cis.temple.edu/~wu/research/publications/Publication_files/Paper_Guga.pdf>  
 
-14. Lu, M., & Wang, G. "Chess Evolution Visualization." *IEEE VIS*, 2014. <https://pubmed.ncbi.nlm.nih.gov/26357293/>
+14. <a id="ref-14"></a> Lu, M., & Wang, G. “Chess Evolution Visualization.” *IEEE VIS*, 2014. <https://pubmed.ncbi.nlm.nih.gov/26357293/>  
 
-15. García-Díaz, P. R., & Mariscal-Quintero, R. "Visual Analytics as a Cognitive Microscope in Elite Chess." *TechRxiv*, February 17, 2026. DOI: <https://doi.org/10.36227/techrxiv.177130687.71691368/v1>
+15. <a id="ref-15"></a> García-Díaz, P. R., & Mariscal-Quintero, R. “Visual Analytics as a Cognitive Microscope in Elite Chess.” *TechRxiv*, February 17, 2026. DOI: <https://doi.org/10.36227/techrxiv.177130687.71691368/v1>  
