@@ -95,9 +95,8 @@ We also integrated a `compare_clustering_methods` helper that benchmarks k-means
 
 ##### 6.1 Summary of Progress
 
-This progress report represents the halfway point of ChessInsight's development. Our primary objective for the first half of the semester was to build a working analytical backend—one capable of ingesting raw game data, constructing behaviorally meaningful player representations, and producing both supervised and unsupervised models of skill. We are pleased to report that this objective has been met in full.
-
-Starting from 350,060 annotated Lichess games spanning an Elo range of 600–3,265, we constructed 30 player-level features for 22,725 players who had accumulated sufficient game history. These features were derived from four behavioral dimensions identified in the literature: time allocation across game phases [5, 6, 13], position complexity and material dynamics [9], error rates [12], and opening tendencies [9]. All pipeline stages—from raw PGN parsing to feature aggregation, model training, and cluster analysis—run in under ten minutes on a standard laptop using chunk-based Parquet caching, with every artifact serialized for reproducibility and downstream dashboard integration.
+This report marks the midpoint of ChessInsight. Our goal for the first half of the semester was to build an analytical backend capable of processing chess game data and generating supervised and unsupervised skill models, which has been successfully achieved.
+Using 350,060 annotated Lichess games (Elo 600–3,265), we generated 30 player-level behavioral features for 22,725 players based on four dimensions from prior work: time allocation, position complexity and material dynamics, error rates, and opening tendencies [5,6,9,12,13].
 
 **Progress against stated midterm targets:**
 
@@ -105,53 +104,44 @@ We originally committed to a working classifier exceeding 50% accuracy and an in
 
 - **Data pipeline and feature extraction** are complete and reproducible. The full feature matrix is available at both game level (39 features) and player level (30 features).
 
-- **Skill-tier classification** using a Random Forest over 18 selected behavioral features yields a test-set exact-tier accuracy of **42.6%** and an adjacent-tier accuracy (±1 tier) of **55.6%** on 49,345 held-out samples (macro F1 = 0.425). While the exact-accuracy figure falls modestly short of the 50% midterm milestone, we consider the adjacent-accuracy result the more informative measure: it confirms that classification errors are concentrated at neighboring tier boundaries rather than reflecting arbitrary misclassifications—behavior consistent with the gradual, continuous nature of chess skill development observed in prior work [2, 3]. To pursue the 65% final target, we have additionally implemented a soft-voting **ensemble classifier** combining optimized XGBoost, Random Forest, and Gradient Boosting with second-order interaction features (time-ratio across phases, time×accuracy composite, error severity weighting). This model has been implemented and is queued for evaluation in the next development sprint.
+- **Skill-tier classification** using a Random Forest with 18 behavioral features achieves **42.6% exact-tier accuracy** and **55.6% adjacent-tier accuracy** (macro F1 = 0.425) on 49,345 test samples; although slightly below the 50% midterm target, the higher adjacent accuracy indicates errors mostly occur between neighboring tiers. To reach the **65% final goal**, we implemented a soft-voting ensemble model (XGBoost, Random Forest, Gradient Boosting) with interaction features, which is scheduled for evaluation in the next sprint.
 
-- **Behavioral clustering** using k-means (k=5 on PCA-reduced features, 87.6% variance retained) identifies five player archetypes with a silhouette score of 0.21, Calinski–Harabasz index of 3,440, and Davies–Bouldin index of 1.35. To contextualize these results, we conducted a systematic comparison of five clustering algorithms on the identical feature matrix. **Birch** emerged as the strongest alternative, achieving a silhouette score of 0.29 and Davies–Bouldin index of 1.02—improvements of 38% and 25%, respectively, over k-means on those two metrics. We plan to adopt Birch as the primary clustering method in the final submission.
+- **Behavioral clustering** using k-means (k=5 on PCA-reduced features retaining 87.6% variance) identified five player archetypes (silhouette = 0.21, CH = 3440, DB = 1.35). A comparison across five algorithms showed Birch performed better (silhouette = 0.29, DB = 1.02), improving these metrics by 38% and 25%, so it will be adopted for the final clustering solution.
 
 - **Interactive dashboard** remains the principal outstanding deliverable; the current output is a static matplotlib wireframe illustrating the intended layout.
 
-**Key finding — time as the primary behavioral signal:** The most substantive scientific result from this phase concerns the structure of predictive information in our feature set. Random Forest importance scores show that phase-wise time averages and variances collectively account for approximately 57% of total feature importance, with middlegame average time alone contributing 16.4%. This quantitatively supports our central hypothesis—that *how* a player distributes thinking time across the opening, middlegame, and endgame encodes more information about their skill tier than the frequency of outright blunders or opening choices [5, 6, 13]. Error-rate features (blunder rate, centipawn loss) do carry secondary signal but appear underweighted in the current model, likely a consequence of their heuristic computation: without genuine engine evaluations, these features are noisier than they would be with real Stockfish analysis [12].
+**Key finding — time as the primary behavioral signal:** Feature importance shows phase-wise time statistics account for ~57% of model importance, with middlegame time contributing 16.4%, indicating time allocation is a stronger skill indicator than blunders or openings [5,6,13]. Error features provide weaker signal due to heuristic estimation without Stockfish evaluation [12].
 
-**Key finding — speed vs. deliberation as the dominant clustering axis:** Across the five identified archetypes, the clearest behavioral divide is between deliberate players—who exhibit higher average think times (opening ≈3.4 s, middlegame ≈8.9 s) and substantially higher time variance (opening variance ≈53 vs. ≈12–19 for fast clusters), predominantly rating around Elo 1,453—and fast players, who move significantly more quickly and are concentrated in the Advanced and Expert tiers (avg Elo 1,706–1,774). This separation is consistent with cognitive research suggesting that expert intuition allows skilled players to pattern-match rapidly and confidently, while intermediate players deliberate more extensively on each position [5, 6].
-
----
+**Key finding — speed vs. deliberation as the dominant clustering axis:** Across the five archetypes, the key divide is between deliberate players (higher think times, avg Elo ≈1453) and fast players concentrated in Advanced–Expert tiers (avg Elo ≈1706–1774), consistent with research showing stronger players rely more on rapid pattern recognition [5,6].
 
 ##### 6.2 Plan for the Remaining Semester
 
 The second half of the project has four clearly sequenced objectives:
 
 **1. Improve classification performance.**
-We will evaluate the ensemble classifier against the Random Forest baseline on the identical test split, using exact accuracy, adjacent accuracy, and macro F1 as primary metrics. We will also run ablation experiments to quantify both the isolated contribution of time-based features and the marginal gain from the interaction terms introduced in the improved model. Should the ensemble not reach the 65% threshold, we will treat Elo regression (predicting continuous Elo from features rather than classifying into discrete tiers) as a well-motivated alternative that sidesteps the ambiguity inherent in tier boundaries [2, 3].
+We will evaluate the ensemble against the Random Forest baseline using exact accuracy, adjacent accuracy, and macro F1, with ablation tests for time-based and interaction features. If it fails to reach the 65% target, we will explore Elo regression to avoid ambiguity in discrete skill tiers [2,3].
 
 **2. Finalize and validate the clustering solution.**
-We will replace k-means with Birch as the primary algorithm, then assess archetype stability through bootstrap resampling: if cluster compositions change substantially across resampled subsets, the archetypes are unreliable and we will reduce k or apply stronger regularization. We will also investigate whether the three visually overlapping "Advanced Fast Player" sub-clusters are explained by time-control type (Bullet vs. Blitz vs. Rapid), which would suggest that time control, rather than intrinsic behavioral style, drives that within-archetype variation [7, 8].
+We will adopt Birch clustering and test archetype stability via bootstrap resampling, adjusting cluster count or regularization if instability appears. We will also examine whether overlapping “Advanced Fast Player” clusters reflect different time controls (Bullet, Blitz, Rapid) rather than behavioral differences [7,8].
 
 **3. Implement the interactive dashboard.**
-The frontend will consume pre-computed artifacts (t-SNE embedding coordinates, cluster statistics JSON, feature importance CSV) to decouple rendering from model computation. We will build three coordinated views in priority order: (a) a t-SNE behavioral map in which each point represents a player, colored by archetype, with hover tooltips showing Elo and key statistics; (b) a tier × game-phase time-usage heatmap enabling direct cross-tier comparison; and (c) an archetype comparison panel displaying per-cluster feature distributions. These three views directly address the analytical tasks outlined in the proposal: locating a player in behavioral space, comparing their time-use profile to peers, and understanding which archetype characteristics covary with skill [14, 15].
+The frontend will use pre-computed artifacts (t-SNE embeddings, cluster statistics, and feature importance) to render three key views—a behavioral map, a tier × phase time-usage heatmap, and an archetype comparison panel—allowing users to locate players in behavioral space, compare time-use patterns, and interpret archetype–skill relationships [14,15].
 
 **4. Evaluate, document, and demo.**
-We will report calibration curves alongside accuracy metrics to characterize model confidence, and compute top-2 tier accuracy as a supplementary measure suited to the ordinal nature of skill tiers. Archetype interpretability will be validated informally through structured feedback from chess-playing classmates. As a stretch goal, we will implement the D3.js force-directed opening network connecting ECO codes to archetypes [9], which would complete the full set of visualizations described in the original proposal.
-
----
+We will report calibration curves and top-2 tier accuracy to evaluate model confidence and ordinal performance, validate archetype interpretability through feedback from chess-playing classmates, and—if time permits—implement a D3.js opening network linking ECO codes to archetypes [9].
 
 ##### 6.3 Risks and Mitigation Strategies
 
 Three risks warrant active monitoring in the second half of the project:
 
-**Classification accuracy ceiling.** The inherent fuzziness of Elo-based tier boundaries—a player rated 1,598 and one rated 1,602 are labeled Intermediate and Advanced respectively, despite near-identical playing strength—may impose a practical ceiling on exact-tier accuracy that even expressive models cannot overcome. Our mitigations are layered: first, evaluate the ensemble; second, explore whether finer feature engineering (particularly with real engine evaluations) moves the needle; third, fall back to Elo regression or a coarser two-tier task if the ceiling cannot be raised above 55% [2, 3].
+**Classification accuracy ceiling.** Because Elo tier boundaries are inherently fuzzy (e.g., ratings like 1598 vs. 1602 fall into different tiers despite similar strength), exact-tier accuracy may have a practical ceiling, so we will evaluate the ensemble, explore improved feature engineering with engine evaluations, and, if necessary, shift to Elo regression or a coarser two-tier classification task [2,3].
 
-**Quality of heuristic accuracy features.** Centipawn loss and blunder rates are computed without a chess engine, reducing them to structural approximations (e.g., counting captures and checks as "tactical" moves). These features currently rank low in the importance analysis, and it is plausible that raising their quality through even a partial Stockfish evaluation pass could measurably improve model performance [12]. We will assess the feasibility of processing a stratified sample of games with Stockfish given the available compute time.
+**Quality of heuristic accuracy features.** Because centipawn loss and blunder rates are currently heuristic approximations without engine analysis, their predictive value may be limited, so we will assess whether running Stockfish on a stratified sample of games can improve feature quality and model performance within available compute time [12].
 
-**Dashboard delivery timeline.** Implementing a polished, linked-view interactive interface is the most time-intensive remaining task. Our primary mitigation is to strictly scope the initial implementation to the three coordinated views described above and defer supplementary views (opening network, blunder heatmap) to the stretch-goal category. The pre-computed artifact store means the frontend team can develop and test views without re-running the full analysis pipeline [14, 15].
-
+**Dashboard delivery timeline.** Since building a polished linked-view dashboard is the most time-intensive task, we will prioritize the three core views and treat additional visualizations as stretch goals, while using pre-computed artifacts so frontend development can proceed without rerunning the full pipeline [14,15].
 
 #### 7. Effort Statement
-
-All five team members have contributed roughly equal effort during the first half of the project, spanning literature review, data processing, model development, and documentation. Going forward, we anticipate a similar distribution, with individual focus areas shifting toward dashboard development, model evaluation, and final write-up as the semester progresses.
-
-
----
+All five team members contributed equally to literature review, data processing, modeling, and documentation, and will continue sharing effort while focusing on dashboard development, evaluation, and the final report.
 
 #### References
 
