@@ -5,8 +5,7 @@
 
 #### 1. Introduction
 
-ChessInsight aims to build an interactive visual analytics system that reveals how chess gameplay patterns—such as time usage, blunders, and position complexity—vary across skill levels, and to predict a player's skill tier from their behavioral traces rather than raw Elo. Existing tools such as Lichess analysis boards and Chess.com focus on analyzing single games move-by-move using chess engines; they lack aggregated pattern analysis across thousands of games and cannot explain why players at different skill levels behave differently [1](#ref-1), [2](#ref-2), [3](#ref-3).
-
+ChessInsight aims to build an interactive visual analytics system that reveals how chess gameplay patterns—such as time usage, blunders, and position complexity—vary across skill levels, and to predict a player's skill tier from their behavioral traces rather than raw Elo. Existing tools such as Lichess analysis boards and Chess.com focus on analyzing single games move-by-move using chess engines; they lack aggregated pattern analysis across thousands of games and cannot explain why players at different skill levels behave differently [1](#ref-1), [2](#ref-2), [3](#ref-3).  
 Our system analyzes data from [Lichess dataset](https://database.lichess.org), extracts game- and player-level features, trains a classifier to predict skill tiers, identifies player archetypes through clustering, and presents the results on a web application.
 
 #### 2. Problem Definition
@@ -58,33 +57,24 @@ While the interactive dashboard is not yet implemented, we have generated severa
 #### 5.1 Skill-Tier Classification Performance
 
 The current random forest baseline achieves the following: 1) **Validation accuracy: approximately 42.3%**; 2) **Test accuracy:** **42.6%** (exact tier): 3) **Adjacent accuracy (±1 tier):** **55.6%**.; 4) **Macro F1:** approximately **0.425**.  
-Error analysis shows most mistakes occur between adjacent tiers (e.g., Intermediate vs. Advanced, Advanced vs. Expert), which is expected given fuzzy boundaries between skill levels. Beginners are recognized more reliably, with fewer predictions leaking into higher tiers.
-
-#### Planned evaluation work:
-Compare random forests with gradient boosting (XGBoost or LightGBM) and possibly shallow neural networks using the same features. Add calibration curves and top-k tier accuracy to decrease  prediction uncertainty. Measure the impact of time-related features compared with engine-based accuracy measures.
+Error analysis shows most mistakes occur between adjacent tiers (e.g., Intermediate vs. Advanced, Advanced vs. Expert), which is expected given fuzzy boundaries between skill levels. Beginners are recognized more reliably, with fewer predictions leaking into higher tiers.  
+**Planned evaluation work** : Compare random forests with gradient boosting (XGBoost or LightGBM) and possibly shallow neural networks using the same features. Add calibration curves and top-k tier accuracy to decrease  prediction uncertainty. Measure the impact of time-related features compared with engine-based accuracy measures.
 
 #### 5.2 Clustering Quality and Interpretability
 
-The current k-means model with k = 5 yields: **Silhouette score: 0.21**, **Calinski–Harabasz index: 3440.3**, and **Davies–Bouldin index: 1.35**.
-
-We observe several archetypal patterns, such as an **Intermediate Deliberate Player** cluster and multiple **Advanced Fast Player** clusters with slightly different Elo bands and sizes, capturing the trade-off between speed and deliberation at higher skill levels.
-
-We benchmarked k-means clustering against different clustering methods like Gaussian Mixture Models, hierarchical clustering, DBSCAN, and Birch on the same feature matrix. From this comparison, **Birch** achieves the highest silhouette score (≈0.29) and the lowest Davies–Bouldin index (≈1.02), outperforming k-means on these internal metrics, while k-means attains the highest Calinski–Harabasz score. We keep k-means as the primary pipeline method for now because it is simple to understand, and treat Birch as a promising alternative to explore further in the final phase.
-
-
-#### Planned evaluation work:
-1\) Use the comparison results and additional hyperparameter sweeps to decide whether Birch or another alternative offers better separation or interpretability than k-means. 2) Investigate cluster stability under resampling and feature perturbations. 3) Validate interpretability via qualitative inspection and, if time permits, informal user feedback from chess-playing classmates. 
+The current k-means model with k = 5 yields: **Silhouette score: 0.21**, **Calinski–Harabasz index: 3440.3**, and **Davies–Bouldin index: 1.35**.  
+We observe several archetypal patterns, such as an **Intermediate Deliberate Player** cluster and multiple **Advanced Fast Player** clusters with slightly different Elo bands and sizes, capturing the trade-off between speed and deliberation at higher skill levels.  
+We benchmarked k-means clustering against different clustering methods like Gaussian Mixture Models, hierarchical clustering, DBSCAN, and Birch on the same feature matrix. From this comparison, **Birch** achieves the highest silhouette score (≈0.29) and the lowest Davies–Bouldin index (≈1.02), outperforming k-means on these internal metrics, while k-means attains the highest Calinski–Harabasz score. We keep k-means as the primary pipeline method for now because it is simple to understand, and treat Birch as a promising alternative to explore further in the final phase.  
+**Planned evaluation work** : 1) Use the comparison results and additional hyperparameter sweeps to decide whether Birch or another alternative offers better separation or interpretability than k-means. 2) Investigate cluster stability under resampling and feature perturbations. 3) Validate interpretability via qualitative inspection and, if time permits, informal user feedback from chess-playing classmates. 
 
 #### 6. Conclusions, Remaining Work, and Risks
 
 #### 6.1 Summary of Progress
-This report marks the midpoint of ChessInsight. Our goal for the first half of the semester was to build an analytical backend capable of processing chess game data and generating supervised and unsupervised skill models, which has been successfully achieved.
-Using 350,060 annotated Lichess games (Elo 600–3,265), we generated 30 player-level behavioral features for 22,725 players based on four dimensions from prior work: time allocation, position complexity and material dynamics, error rates, and opening tendencies.
-
+Our goal for the first half of the semester was to build an analytical backend capable of processing chess game data and generating supervised and unsupervised skill models, which has been successfully achieved. Using 350,060 annotated Lichess games (Elo 600–3,265), we generated 30 player-level behavioral features for 22,725 players based on four dimensions from prior work: time allocation, position complexity and material dynamics, error rates, and opening tendencies.  
 **Progress against stated midterm targets:**
 We originally committed to a working classifier exceeding 50% accuracy and an initial clustering solution by the midpoint, with a final target of ≥65% accuracy and a complete interactive frontend by the semester's end. Our current standing against those goals is as follows:  
 **Data pipeline and feature extraction** are complete and reproducible. The full feature matrix is available at both game level (39 features) and player level (30 features).  
-**Skill-tier classification** using a Random Forest with 18 behavioral features achieves **42.6% exact-tier accuracy** and **55.6% adjacent-tier accuracy** (macro F1 = 0.425) on 49,345 test samples; although slightly below the 50% midterm target, the higher adjacent accuracy indicates errors mostly occur between neighboring tiers. To reach the **65% final goal**, we implemented a soft-voting ensemble model (XGBoost, Random Forest, Gradient Boosting) with interaction features, which is scheduled for evaluation in the next sprint.  
+**Skill-tier classification** using a Random Forest with 18 behavioral features achieves **42.6% exact-tier accuracy** and **55.6% adjacent-tier accuracy** (macro F1 = 0.425) on 49,345 test samples; although slightly below the 50% midterm target, the higher adjacent accuracy indicates errors mostly occur between neighboring tiers. To reach the **65% final goal**, we implemented a soft-voting ensemble model (XGBoost, Random Forest, Gradient Boosting) with interaction features, which is scheduled for evaluation in the next phase.  
 **Behavioral clustering** using k-means (k=5 on PCA-reduced features retaining 87.6% variance) identified five player archetypes (silhouette = 0.21, CH = 3440, DB = 1.35). A comparison across five algorithms showed Birch performed better (silhouette = 0.29, DB = 1.02), improving these metrics by 38% and 25%, so it will be adopted for the final clustering solution.
 **Interactive dashboard** remains the principal outstanding deliverable; the current output is a static matplotlib wireframe illustrating the intended layout.  
 **Key finding :** Time-based features dominate prediction, with phase-wise time statistics accounting for ~57% of model importance (middlegame time = 16.4%), indicating that thinking-time allocation is a stronger indicator of skill than blunders or openings; clustering further reveals a divide between deliberate players (avg Elo ≈1453) and faster Advanced–Expert players (avg Elo ≈1706–1774), consistent with research on rapid pattern recognition in stronger players.
@@ -102,8 +92,88 @@ These three risks need careful attention during the rest of the project:
 **Quality of heuristic accuracy features:** Because centipawn loss and blunder rates are heuristic approximations without engine analysis, we will test whether running Stockfish on a stratified sample improves feature quality and model performance within available compute time.  
 **Dashboard delivery timeline.** Since the dashboard is the most time-intensive task, we will prioritize the three core views and treat additional visualizations as stretch goals while using pre-computed artifacts to avoid rerunning the full pipeline.
 
-#### 7. Effort Statement
-All five team members contributed equally to literature review, data processing, modeling, and documentation, and will continue sharing effort while focusing on dashboard development, evaluation, and the final report.
+#### 7. Gantt Chart and Effort Statement
+
+<table border="1" style="border-collapse: collapse; text-align: center; width: 100%; line-height: 1; border-bottom: 2px solid black;">
+  <thead>
+    <tr style="background-color: #f6f8fa;">
+      <th style="padding: 1px 2px; text-align: left; font-weight: normal;">Task</th>
+      <th style="padding: 1px 2px; font-weight: normal;">Member</th>
+      <th style="padding: 1px 2px; font-weight: normal;">Plan</th>
+      <th style="padding: 1px 2px; font-weight: normal;">W1</th>
+      <th style="padding: 1px 2px; font-weight: normal;">W2</th>
+      <th style="padding: 1px 2px; font-weight: normal;">W3</th>
+      <th style="padding: 1px 2px; font-weight: normal;">W4</th>
+      <th style="padding: 1px 2px; font-weight: normal;">W5</th>
+      <th style="padding: 1px 2px; font-weight: normal;">W6</th>
+      <th style="padding: 1px 2px; font-weight: normal;">W7</th>
+      <th style="padding: 1px 2px; font-weight: normal;">W8</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Data & Features -->
+    <tr>
+      <td rowspan="2" style="padding: 1px 2px; text-align: left;">Data & Features</td>
+      <td rowspan="2" style="padding: 1px 2px;">All</td>
+      <td style="padding: 1px 2px; color: #555;">Old</td>
+      <td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td>
+    </tr>
+    <tr>
+      <td style="padding: 1px 2px;">Revised</td>
+      <td style="padding: 1px 2px;"><span style="color: green;">&#9679;</span></td><td style="padding: 1px 2px;"><span style="color: green;">&#9679;</span></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td>
+    </tr>
+    <!-- Clustering -->
+    <tr style="border-top: 1px solid #ccc;">
+      <td rowspan="2" style="padding: 1px 2px; text-align: left;">Clustering</td>
+      <td rowspan="2" style="padding: 1px 2px;"><a href="#A">A</a>, <a href="#E">E</a></td>
+      <td style="padding: 1px 2px; color: #555;">Old</td>
+      <td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td>
+    </tr>
+    <tr>
+      <td style="padding: 1px 2px;">Revised</td>
+      <td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"><span style="color: green;">&#9679;</span></td><td style="padding: 1px 2px;"><span style="color: green;">&#9679;</span></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td>
+    </tr>
+    <!-- Classification -->
+    <tr style="border-top: 1px solid #ccc;">
+      <td rowspan="2" style="padding: 1px 2px; text-align: left;">Classification</td>
+      <td rowspan="2" style="padding: 1px 2px;"><a href="#C">C</a>, <a href="#D">D</a></td>
+      <td style="padding: 1px 2px; color: #555;">Old</td>
+      <td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td>
+    </tr>
+    <tr>
+      <td style="padding: 1px 2px;">Revised</td>
+      <td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"><span style="color: green;">&#9679;</span></td><td style="padding: 1px 2px;"><span style="color: green;">&#9679;</span></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td>
+    </tr>
+    <!-- Visualization -->
+    <tr style="border-top: 1px solid #ccc;">
+      <td rowspan="2" style="padding: 1px 2px; text-align: left;">Visualization</td>
+      <td rowspan="2" style="padding: 1px 2px;"><a href="#B">B</a></td>
+      <td style="padding: 1px 2px; color: #555;">Old</td>
+      <td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td>
+    </tr>
+    <tr>
+      <td style="padding: 1px 2px;">Revised</td>
+      <td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"><span style="color: green;">&#9679;</span></td><td style="padding: 1px 2px;"><span style="color: green;">&#9679;</span></td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td>
+    </tr>
+    <!-- Integration & Report -->
+    <tr style="border-top: 1px solid #ccc;">
+      <td rowspan="2" style="padding: 1px 2px; text-align: left;">Integration & Report</td>
+      <td rowspan="2" style="padding: 1px 2px;">All</td>
+      <td style="padding: 1px 2px; color: #555;">Old</td>
+      <td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td>
+    </tr>
+    <tr>
+      <td style="padding: 1px 2px;">Revised</td>
+      <td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;"></td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td><td style="padding: 1px 2px;">$\blacksquare$</td>
+    </tr>
+    <tr style="border-top: 1px solid #ccc;">
+      <td colspan="11" style="padding: 1px 2px; text-align: left; font-size: 0.8em; color: #333;">
+        <strong>Legend:</strong> &nbsp; <span style="color: green;">&#9679;</span> Completed &nbsp;&nbsp;&nbsp; $\blacksquare$ Planned
+      </td>
+    </tr>
+  </tbody>
+</table> 
+All members completed their parts as mentioned in the above table and made equal contributions in drafting the progress report. 
 
 #### References
 1. <a id="ref-1"></a> McIlroy-Young, R., et al. “Aligning Superhuman AI with Human Behavior: Chess as a Model System.” *KDD*, 2020. <https://www.cs.toronto.edu/~ashton/pubs/maia-kdd2020.pdf>  
