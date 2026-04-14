@@ -62,11 +62,11 @@ def calculate_time_per_phase(clock_times: List[float],
     def safe_var(arr):
         return np.var(arr) if len(arr) > 1 else np.nan
 
-    # Low time moves (less than threshold seconds remaining when move was made)
+    # Low time moves (less than 30 seconds remaining when move was made)
     low_time_moves = sum(1 for t in clock_times if t is not None and t < 30)
     low_time_ratio = low_time_moves / len(clock_times) if len(clock_times) > 0 else 0
 
-    # Time trouble (below 10% of original time)
+    # Time trouble (last 10% of original time)
     time_trouble_threshold = base_time * 0.1
     time_trouble_moves = sum(1 for t in clock_times if t is not None and t < time_trouble_threshold)
     time_trouble_freq = time_trouble_moves / len(clock_times) if len(clock_times) > 0 else 0
