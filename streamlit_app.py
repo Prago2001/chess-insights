@@ -232,14 +232,25 @@ def render_overview_tab(k_selected: int):
 
 
 # ---------------------------------------------------------------------------
-# Player Cluster Map Tab (with per-player drill-down and global k)
+# Player Cluster Map Tab (with per-player drill-down and local k slider)
 # ---------------------------------------------------------------------------
 def render_cluster_tab(k_selected: int):
     st.subheader("Player Cluster Map")
 
+    # Local k slider for this tab (defaults to global k)
+    k_tab = st.slider(
+        "Clusters for this view (k)",
+        min_value=3,
+        max_value=8,
+        value=k_selected,
+        step=1,
+        key="cluster_tab_k",
+        help="Adjusts the number of clusters used in this Player Cluster Map view.",
+    )
+
     # Compute k-means on 2D embedding for interactive visualization (shared across controls/plot)
     coords = player_df[["x", "y"]].values
-    kmeans = KMeans(n_clusters=k_selected, random_state=42, n_init=10)
+    kmeans = KMeans(n_clusters=k_tab, random_state=42, n_init=10)
     viz_labels_all = kmeans.fit_predict(coords)
 
     player_viz = player_df.copy()
@@ -274,7 +285,7 @@ def render_cluster_tab(k_selected: int):
             step=50,
         )
 
-        st.markdown(f"**Cluster Summary (k = {k_selected})**")
+        st.markdown(f"**Cluster Summary (k = {k_tab})**")
         summary_df = (
             player_viz.groupby("viz_cluster_name")
             .agg(Size=("player", "count"), AvgElo=("avg_elo", "mean"))
@@ -297,7 +308,7 @@ def render_cluster_tab(k_selected: int):
                 selected_player = matches.iloc[0]
                 st.markdown(
                     f"**Selected player:** `{player_query}`  |  Elo: {selected_player['avg_elo']:.0f}  "
-                    f"|  Tier: {selected_player['skill_tier']}  |  Cluster (k={k_selected}): {selected_player['viz_cluster_name']}"
+                    f"|  Tier: {selected_player['skill_tier']}  |  Cluster (k={k_tab}): {selected_player['viz_cluster_name']}"
                 )
                 st.markdown(
                     f"Games analyzed: **{int(selected_player.get('num_games', 0))}**"
@@ -338,7 +349,7 @@ def render_cluster_tab(k_selected: int):
                 color="viz_cluster_name",
                 color_discrete_sequence=CLUSTER_COLORS,
                 hover_data=["player", "avg_elo", "num_games", "skill_tier"],
-                title=f"Player Embedding Map — k = {k_selected}",
+                title=f"Player Embedding Map — k = {k_tab}",
                 labels={
                     "x": "Embedding Dim 1",
                     "y": "Embedding Dim 2",
@@ -379,470 +390,4 @@ def render_cluster_tab(k_selected: int):
 # ---------------------------------------------------------------------------
 # Time Analysis Tab
 # ---------------------------------------------------------------------------
-def render_time_tab():
-    st.subheader("Time Usage and Time Pressure")
-
-    # Heatmap of average time per move
-    fig_heatmap = go.Figure(
-        data=go.Heatmap(
-            z=time_heatmap_df.values,
-            x=time_heatmap_df.columns.tolist(),
-            y=time_heatmap_df.index.tolist(),
-            colorscale="YlOrRd",
-            text=time_heatmap_df.values.round(2),
-            texttemplate="%{text}s",
-            hovertemplate=(
-                "Tier: %{y}<br>Phase: %{x}<br>Avg Time: %{z:.2f}s<extra></extra>"
-            ),
-        )
-    )
-    fig_heatmap.update_layout(
-        title="Average Time per Move (seconds) by Skill Tier & Game Phase",
-        xaxis_title="Game Phase",
-        yaxis_title="Skill Tier",
-        height=380,
-    )
-
-    # Time variance by tier using player-level data
-    tv_data = []
-    for phase, col in [
-        ("Opening", "time_variance_opening_mean"),
-        ("Middlegame", "time_variance_middlegame_mean"),
-        ("Endgame", "time_variance_endgame_mean"),
-    ]:
-        if col in player_df.columns:
-            for tier in SKILL_TIERS:
-                vals = player_df[player_df["skill_tier"] == tier][col]
-                tv_data.append(
-                    {
-                        "Phase": phase,
-                        "Skill Tier": tier,
-                        "Time Variance": vals.mean(),
-                    }
-                )
-    tv_df = pd.DataFrame(tv_data)
-    fig_variance = px.bar(
-        tv_df,
-        x="Phase",
-        y="Time Variance",
-        color="Skill Tier",
-        barmode="group",
-        color_discrete_map=TIER_COLORS,
-        title="Average Time Variance by Skill Tier & Game Phase",
-        category_orders={"Skill Tier": SKILL_TIERS},
-    )
-    fig_variance.update_layout(height=380)
-
-    # Time trouble frequency
-    if "time_trouble_frequency_mean" in player_df.columns:
-        tt_data = []
-        for tier in SKILL_TIERS:
-            vals = player_df[player_df["skill_tier"] == tier][
-                "time_trouble_frequency_mean"
-            ]
-            tt_data.append(
-                {"Skill Tier": tier, "Time Trouble Freq": vals.mean()}
-            )
-        tt_df = pd.DataFrame(tt_data)
-        fig_tt = px.bar(
-            tt_df,
-            x="Skill Tier",
-            y="Time Trouble Freq",
-            color="Skill Tier",
-            color_discrete_map=TIER_COLORS,
-            title="Average Time Trouble Frequency by Skill Tier",
-        )
-        fig_tt.update_layout(showlegend=False, height=370)
-    else:
-        fig_tt = go.Figure()
-
-    col_top = st.columns(2)
-    with col_top[0]:
-        st.plotly_chart(fig_heatmap, use_container_width=True)
-    with col_top[1]:
-        st.plotly_chart(fig_variance, use_container_width=True)
-
-    col_bottom = st.columns(2)
-    with col_bottom[0]:
-        st.plotly_chart(fig_tt, use_container_width=True)
-    with col_bottom[1]:
-        st.markdown(
-            """
-            **Key time-management insights**
-
-            - Beginners spend more time per move and show higher variance, especially in the opening.
-            - Intermediate and Advanced players allocate time more consistently across phases.
-            - Time-trouble frequency decreases as skill level increases.
-            - Stronger players appear to rely more on fast pattern recognition in routine positions.
-            """
-        )
-
-
-# ---------------------------------------------------------------------------
-# Classification Tab
-# ---------------------------------------------------------------------------
-def render_classification_tab():
-    st.subheader("Skill-Tier Classification Performance")
-
-    # Confusion matrix (normalized row-wise)
-    cm_norm = cm_array.astype(float) / cm_array.sum(axis=1, keepdims=True)
-    fig_cm = go.Figure(
-        data=go.Heatmap(
-            z=cm_norm,
-            x=cm_labels,
-            y=cm_labels,
-            colorscale="Blues",
-            text=cm_array,
-            texttemplate="%{text}",
-            hovertemplate=(
-                "True: %{y}<br>Predicted: %{x}<br>Count: %{text}<br>Rate: %{z:.2%}<extra></extra>"
-            ),
-        )
-    )
-    fig_cm.update_layout(
-        title="Skill Tier Classification — Confusion Matrix",
-        xaxis_title="Predicted Tier",
-        yaxis_title="Actual Tier",
-        height=450,
-    )
-
-    # Feature importance
-    fi = feature_importance.head(15).copy()
-    fi["feature_clean"] = (
-        fi["feature"].str.replace("white_", "", regex=False)
-        .str.replace("_", " ")
-        .str.title()
-    )
-    fig_fi = px.bar(
-        fi,
-        x="importance",
-        y="feature_clean",
-        orientation="h",
-        color="importance",
-        color_continuous_scale="Viridis",
-        title="Top 15 Feature Importances (Classifier)",
-        labels={"importance": "Importance", "feature_clean": "Feature"},
-    )
-    fig_fi.update_layout(
-        yaxis=dict(autorange="reversed"),
-        height=450,
-        coloraxis_showscale=False,
-    )
-
-    m = classifier_metrics["metrics"]
-    metrics_df = pd.DataFrame(
-        [
-            ["Test Accuracy", f"{m['test_accuracy']:.1%}"],
-            ["Adjacent Accuracy (±1 tier)", f"{m['adjacent_accuracy']:.1%}"],
-            ["Macro Precision", f"{m['macro_precision']:.3f}"],
-            ["Macro Recall", f"{m['macro_recall']:.3f}"],
-            ["Macro F1", f"{m['macro_f1']:.3f}"],
-            [
-                "Train / Val / Test",
-                f"{classifier_metrics['train_size']:,} / {classifier_metrics['val_size']:,} / {classifier_metrics['test_size']:,}",
-            ],
-        ],
-        columns=["Metric", "Value"],
-    )
-
-    col_top = st.columns([3, 2])
-    with col_top[0]:
-        st.plotly_chart(fig_cm, use_container_width=True)
-    with col_top[1]:
-        st.markdown("**Classification Metrics**")
-        st.table(metrics_df)
-        st.markdown(
-            """
-            - Model: Best-performing classifier from the pipeline (see repo for details).
-            - "Adjacent accuracy" treats predictions within ±1 tier as correct.
-            - Most mistakes occur between neighboring tiers (e.g., Intermediate vs. Advanced).
-            """
-        )
-
-    st.plotly_chart(fig_fi, use_container_width=True)
-
-
-# ---------------------------------------------------------------------------
-# Cluster Analysis Tab (driven by global k)
-# ---------------------------------------------------------------------------
-def render_cluster_analysis_tab(k_selected: int):
-    st.subheader("Behavioral Clusters and Quality Metrics")
-
-    # Recompute k-means clusters on the 2D embedding to align with global k
-    coords = player_df[["x", "y"]].values
-    kmeans = KMeans(n_clusters=k_selected, random_state=42, n_init=10)
-    labels = kmeans.fit_predict(coords)
-
-    df = player_df.copy()
-    df["viz_cluster"] = labels
-    df["viz_cluster_name"] = [f"Cluster {c + 1}" for c in df["viz_cluster"]]
-
-    # Cluster size and Elo
-    clu_df = (
-        df.groupby("viz_cluster_name")
-        .agg(Size=("player", "count"), AvgElo=("avg_elo", "mean"))
-        .reset_index()
-    )
-    clu_df["Avg Elo"] = clu_df["AvgElo"].round(0).astype(int)
-    clu_df.rename(columns={"viz_cluster_name": "Cluster"}, inplace=True)
-
-    fig_pie = px.pie(
-        clu_df,
-        values="Size",
-        names="Cluster",
-        title=f"Cluster Size Distribution (k = {k_selected})",
-        color_discrete_sequence=CLUSTER_COLORS,
-        hole=0.35,
-    )
-    fig_pie.update_layout(height=400)
-
-    # Skill composition per cluster (stacked bar, percentages)
-    comp_counts = (
-        df.groupby(["viz_cluster_name", "skill_tier"])
-        .size()
-        .reset_index(name="count")
-    )
-    if not comp_counts.empty:
-        comp_counts["cluster_total"] = comp_counts.groupby("viz_cluster_name")["count"].transform("sum")
-        comp_counts["Percentage"] = comp_counts["count"] / comp_counts["cluster_total"] * 100
-        comp_df = comp_counts.rename(columns={"viz_cluster_name": "Cluster", "skill_tier": "Skill Tier"})
-    else:
-        comp_df = pd.DataFrame(columns=["Cluster", "Skill Tier", "Percentage"])
-
-    fig_comp = px.bar(
-        comp_df,
-        x="Cluster",
-        y="Percentage",
-        color="Skill Tier",
-        color_discrete_map=TIER_COLORS,
-        title="Skill Tier Composition per Cluster",
-        category_orders={"Skill Tier": SKILL_TIERS},
-    )
-    fig_comp.update_layout(height=400, barmode="stack")
-
-    # Avg Elo by cluster
-    fig_elo = px.bar(
-        clu_df,
-        x="Cluster",
-        y="Avg Elo",
-        color="Cluster",
-        color_discrete_sequence=CLUSTER_COLORS,
-        title="Average Elo by Cluster",
-    )
-    fig_elo.update_layout(showlegend=False, height=370)
-
-    # Clustering methods comparison table (pipeline baseline, k may differ)
-    mc = method_comparison.copy()
-    mc["silhouette_score"] = mc["silhouette_score"].round(3)
-    mc["calinski_harabasz_index"] = mc["calinski_harabasz_index"].round(1)
-    mc["davies_bouldin_index"] = mc["davies_bouldin_index"].round(3)
-    mc = mc[[
-        "method",
-        "n_clusters",
-        "silhouette_score",
-        "calinski_harabasz_index",
-        "davies_bouldin_index",
-    ]]
-    mc.columns = [
-        "Method",
-        "k (offline)",
-        "Silhouette",
-        "Calinski-Harabasz",
-        "Davies-Bouldin",
-    ]
-
-    col_top = st.columns([2, 3])
-    with col_top[0]:
-        st.plotly_chart(fig_pie, use_container_width=True)
-    with col_top[1]:
-        st.plotly_chart(fig_comp, use_container_width=True)
-
-    col_bottom = st.columns([3, 2])
-    with col_bottom[0]:
-        st.plotly_chart(fig_elo, use_container_width=True)
-    with col_bottom[1]:
-        st.markdown("**Clustering Method Comparison (Pipeline Baseline)**")
-        st.table(mc)
-
-        primary_method = clustering_results.get("method", "kmeans")
-        primary_k = clustering_results.get("n_clusters", len(cluster_name_map))
-        st.markdown(
-            f"- **Current dashboard k:** {k_selected} (used in the charts on this page and in the Player Cluster Map tab)."
-        )
-        st.markdown(
-            f"- **Pipeline baseline:** {primary_method} with k = {primary_k} (see `run_analysis.py` for details)."
-        )
-        st.markdown(
-            "- Offline metrics in the table above were computed for the baseline configuration and can guide future model tuning."
-        )
-
-
-# ---------------------------------------------------------------------------
-# Opening Patterns Tab
-# ---------------------------------------------------------------------------
-def render_openings_tab():
-    st.subheader("Opening Patterns by Skill Tier")
-
-    try:
-        games = load_games_processed()
-    except Exception as e:  # pragma: no cover - runtime safeguard
-        st.warning(
-            "Opening pattern analysis requires `games_processed.parquet`. "
-            "Please rerun `python run_analysis.py` to regenerate processed games.\n\n"
-            f"Details: {e}"
-        )
-        return
-
-    if games is None or games.empty:
-        st.info("No games available for opening analysis.")
-        return
-
-    if "white_skill_tier" not in games.columns:
-        st.warning(
-            "Could not find `white_skill_tier` in processed games. "
-            "Opening patterns by tier cannot be computed."
-        )
-        return
-
-    tiers_selected = st.multiselect(
-        "Filter Skill Tiers",
-        options=SKILL_TIERS,
-        default=SKILL_TIERS,
-        key="openings_tiers_multiselect",
-    )
-    games = games[games["white_skill_tier"].isin(tiers_selected)]
-
-    if games.empty:
-        st.info("No games remain after applying the selected skill-tier filters.")
-        return
-
-    if "opening_name" in games.columns:
-        opening_col = "opening_name"
-        opening_label = "Opening Name"
-    elif "opening_eco" in games.columns:
-        opening_col = "opening_eco"
-        opening_label = "ECO Code"
-    else:
-        st.warning(
-            "Could not find `opening_name` or `opening_eco` in processed games. "
-            "Opening pattern visualization is not available."
-        )
-        return
-
-    top_n = st.slider(
-        "Number of top openings to show per tier",
-        min_value=5,
-        max_value=20,
-        value=10,
-        step=1,
-    )
-
-    counts = (
-        games.groupby(["white_skill_tier", opening_col])
-        .size()
-        .reset_index(name="count")
-    )
-
-    # Keep top-N openings per tier
-    top_frames = []
-    for tier in tiers_selected:
-        tier_counts = (
-            counts[counts["white_skill_tier"] == tier]
-            .sort_values("count", ascending=False)
-            .head(top_n)
-        )
-        top_frames.append(tier_counts)
-
-    if not top_frames:
-        st.info("No openings found for the selected configuration.")
-        return
-
-    top_counts = pd.concat(top_frames, ignore_index=True)
-
-    fig = px.bar(
-        top_counts,
-        x="count",
-        y=opening_col,
-        color="white_skill_tier",
-        orientation="h",
-        title=f"Top {top_n} openings by skill tier",
-        labels={
-            "count": "Games",
-            opening_col: opening_label,
-            "white_skill_tier": "Skill Tier",
-        },
-        color_discrete_map=TIER_COLORS,
-        category_orders={"white_skill_tier": SKILL_TIERS},
-    )
-    fig.update_layout(
-        height=550,
-        yaxis={"categoryorder": "total ascending"},
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown(
-        "This view highlights which openings are most frequently played at each skill tier "
-        "based on the processed Lichess games."
-    )
-
-
-# ---------------------------------------------------------------------------
-# Main layout
-# ---------------------------------------------------------------------------
-def main():
-    st.title("ChessInsight Dashboard")
-    st.caption("Team 029 · CSE6242 · Spring 2026")
-
-    st.sidebar.header("Dashboard Controls")
-    k_global = st.sidebar.slider(
-        "Number of clusters (k)",
-        min_value=3,
-        max_value=8,
-        value=DEFAULT_K,
-        step=1,
-        help="Controls the number of clusters used across all cluster-related views.",
-    )
-    st.sidebar.caption(
-        "This k applies to the Player Cluster Map and Behavioral Clusters tabs, and "
-        "is reflected in the Overview KPIs."
-    )
-
-    st.sidebar.markdown(
-        """
-        **How to run locally**
-
-        1. Run `python run_analysis.py` once to generate processed data and models.
-        2. Start the app with `streamlit run streamlit_app.py`.
-        3. Adjust the cluster slider above to explore different k.
-        """
-    )
-
-    tabs = st.tabs(
-        [
-            "Overview",
-            "Player Cluster Map",
-            "Time Analysis",
-            "Classification",
-            "Cluster Analysis",
-            "Opening Patterns",
-        ]
-    )
-
-    with tabs[0]:
-        render_overview_tab(k_global)
-    with tabs[1]:
-        render_cluster_tab(k_global)
-    with tabs[2]:
-        render_time_tab()
-    with tabs[3]:
-        render_classification_tab()
-    with tabs[4]:
-        render_cluster_analysis_tab(k_global)
-    with tabs[5]:
-        render_openings_tab()
-
-
-if __name__ == "__main__":
-    main()
+... (rest of file unchanged) ...
