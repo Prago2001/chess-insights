@@ -2,52 +2,39 @@
   "method": "birch",
   "n_clusters": 4,
   "metrics": {
-    "silhouette_score": 0.37076492467086647,
-    "calinski_harabasz_index": 2304.9584990754165,
-    "davies_bouldin_index": 1.223997718126122,
-    "pca_explained_variance": 0.8644625505451206
+    "silhouette_score": 0.8094813585882973,
+    "calinski_harabasz_index": 2286.357277659272,
+    "davies_bouldin_index": 0.2303118544379529,
+    "pca_explained_variance": 0.8023877296906988
   },
   "cluster_names": {
     "0": {
-      "name": "Advanced Deliberate Player",
-      "description": "Players characterized by deliberate, time-scrambler play style (typically dominant skill tier Advanced).",
-      "characteristics": [
-        "deliberate",
-        "time-scrambler",
-        "advanced"
-      ],
-      "size": 7,
-      "avg_elo": 1495.9936507936507
+      "name": "Cluster 1",
+      "description": "Cluster of players with 22670 players, avg Elo \u2248 1699, dominant tier Advanced.",
+      "characteristics": [],
+      "size": 22670,
+      "avg_elo": 1699.068456045453
     },
     "1": {
-      "name": "Intermediate Deliberate Player",
-      "description": "Players characterized by deliberate play style (typically dominant skill tier Intermediate).",
-      "characteristics": [
-        "deliberate",
-        "intermediate"
-      ],
-      "size": 1197,
-      "avg_elo": 1497.122233857283
+      "name": "Cluster 2",
+      "description": "Cluster of players with 3 players, avg Elo \u2248 1696, dominant tier Advanced.",
+      "characteristics": [],
+      "size": 3,
+      "avg_elo": 1696.25
     },
     "2": {
-      "name": "Advanced Fast Player",
-      "description": "Players characterized by fast play style (typically dominant skill tier Advanced).",
-      "characteristics": [
-        "fast",
-        "advanced"
-      ],
-      "size": 21450,
-      "avg_elo": 1710.4295478978202
+      "name": "Cluster 3",
+      "description": "Cluster of players with 51 players, avg Elo \u2248 1815, dominant tier Advanced.",
+      "characteristics": [],
+      "size": 51,
+      "avg_elo": 1814.753061551418
     },
     "3": {
-      "name": "Advanced Deliberate Player #2",
-      "description": "Players characterized by deliberate play style (typically dominant skill tier Advanced).",
-      "characteristics": [
-        "deliberate",
-        "advanced"
-      ],
-      "size": 71,
-      "avg_elo": 1780.2935203018467
+      "name": "Cluster 4",
+      "description": "Cluster of players with 1 players, avg Elo \u2248 2119, dominant tier Expert.",
+      "characteristics": [],
+      "size": 1,
+      "avg_elo": 2118.8571428571427
     }
   }
 }

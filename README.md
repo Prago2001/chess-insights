@@ -16,10 +16,8 @@ From the repository root:
 
 ```bash
 # Real Lichess data (requires data/raw/data_1m_games.pgn)
-python run_analysis.py --n-games 1000000
+python run_analysis.py
 
-# Synthetic data for quick testing (no PGN required)
-python run_analysis.py --synthetic --n-games 50000
 ```
 
 This will populate:

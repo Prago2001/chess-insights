@@ -6,25 +6,25 @@
     "data_source": "Lichess Database (data_1m_games.pgn)"
   },
   "features": {
-    "game_level_features": 39,
-    "player_level_features": 30,
+    "game_level_features": 47,
+    "player_level_features": 39,
     "players_analyzed": 22725
   },
   "classification": {
-    "model_type": "random_forest",
-    "test_accuracy": "42.7%",
-    "adjacent_accuracy": "56.0%",
-    "macro_f1": "0.4251"
+    "model_type": "xgboost",
+    "test_accuracy": "44.5%",
+    "adjacent_accuracy": "55.3%",
+    "macro_f1": "0.4370"
   },
   "clustering": {
     "method": "birch",
     "n_clusters": 4,
-    "silhouette_score": "0.3708",
+    "silhouette_score": "0.8095",
     "archetypes": {
-      "0": "Advanced Deliberate Player",
-      "1": "Intermediate Deliberate Player",
-      "2": "Advanced Fast Player",
-      "3": "Advanced Deliberate Player #2"
+      "0": "Cluster 1",
+      "1": "Cluster 2",
+      "2": "Cluster 3",
+      "3": "Cluster 4"
     }
   }
 }

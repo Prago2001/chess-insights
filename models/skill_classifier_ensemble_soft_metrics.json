@@ -1,0 +1,20 @@
+{
+  "model_type": "ensemble_soft",
+  "metrics": {
+    "val_accuracy": 0.4373479318734793,
+    "test_accuracy": 0.43830089213300893,
+    "adjacent_accuracy": 0.5549675587996756,
+    "macro_precision": 0.4304213811593257,
+    "macro_recall": 0.44692572140186687,
+    "macro_f1": 0.4352921414283705
+  },
+  "class_distribution": {
+    "Advanced": 124206,
+    "Intermediate": 95824,
+    "Expert": 66643,
+    "Beginner": 42126
+  },
+  "train_size": 230159,
+  "val_size": 49320,
+  "test_size": 49320
+}
