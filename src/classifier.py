@@ -12,11 +12,7 @@ import json
 
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.ensemble import (
-    RandomForestClassifier,
-    GradientBoostingClassifier,
-    VotingClassifier,
-)
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
@@ -192,13 +188,6 @@ def _init_base_model(model_type: str):
             random_state=RANDOM_STATE,
             n_jobs=-1,
         )
-    if model_type == "gradient_boosting":
-        return GradientBoostingClassifier(
-            n_estimators=200,
-            max_depth=5,
-            learning_rate=0.08,
-            random_state=RANDOM_STATE,
-        )
     raise ValueError(f"Unknown model type: {model_type}")
 
 
@@ -213,8 +202,7 @@ def train_classifier(
     Supported model types:
     - "random_forest"
     - "xgboost"
-    - "gradient_boosting"
-    - "ensemble_soft" (soft-voting ensemble of RF + XGB + GB)
+    - "ensemble_soft" (soft-voting ensemble of RF + XGB)
     """
     print(f"Training {model_type} classifier...")
     print(f"Dataset size: {len(X)} samples")
@@ -263,15 +251,12 @@ def train_classifier(
         X_train_balanced, y_train_balanced = X_train_scaled, y_train
 
     # Initialize model(s)
-    base_model_types = ["random_forest", "xgboost", "gradient_boosting"]
-
-    if model_type in {"random_forest", "xgboost", "gradient_boosting"}:
+    if model_type in {"random_forest", "xgboost"}:
         model = _init_base_model(model_type)
     elif model_type == "ensemble_soft":
         estimators = [
             ("rf", _init_base_model("random_forest")),
             ("xgb", _init_base_model("xgboost")),
-            ("gb", _init_base_model("gradient_boosting")),
         ]
         model = VotingClassifier(estimators=estimators, voting="soft")
     else:
