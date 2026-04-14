@@ -17,17 +17,7 @@ from config import (PROCESSED_DATA_DIR, GAME_PHASES, SKILL_TIERS,
 def calculate_time_per_phase(clock_times: List[float],
                              base_time: float,
                              num_moves: int) -> Dict[str, float]:
-    """
-    Calculate time spent per game phase.
-
-    Args:
-        clock_times: List of remaining clock times after each move
-        base_time: Starting time in seconds
-        num_moves: Total number of moves by this player
-
-    Returns:
-        Dictionary with time metrics per phase
-    """
+    """Calculate time spent per game phase for a single player."""
     # Handle None, empty, or too short clock times
     if clock_times is None or len(clock_times) < 5:
         return {
@@ -72,11 +62,11 @@ def calculate_time_per_phase(clock_times: List[float],
     def safe_var(arr):
         return np.var(arr) if len(arr) > 1 else np.nan
 
-    # Low time moves (less than 5 seconds remaining when move was made)
+    # Low time moves (less than threshold seconds remaining when move was made)
     low_time_moves = sum(1 for t in clock_times if t is not None and t < 30)
     low_time_ratio = low_time_moves / len(clock_times) if len(clock_times) > 0 else 0
 
-    # Time trouble (last 20% of original time)
+    # Time trouble (below 10% of original time)
     time_trouble_threshold = base_time * 0.1
     time_trouble_moves = sum(1 for t in clock_times if t is not None and t < time_trouble_threshold)
     time_trouble_freq = time_trouble_moves / len(clock_times) if len(clock_times) > 0 else 0
@@ -95,18 +85,10 @@ def calculate_time_per_phase(clock_times: List[float],
 
 def calculate_move_quality_features(moves: List[Dict],
                                     evaluations: Optional[List[float]] = None) -> Dict[str, float]:
-    """
-    Calculate move quality/accuracy features.
+    """Calculate move quality/accuracy features for a game.
 
     Note: In production, this would use Stockfish evaluations.
     For this implementation, we use heuristic approximations.
-
-    Args:
-        moves: List of move dictionaries
-        evaluations: Optional list of engine evaluations (centipawns)
-
-    Returns:
-        Dictionary with accuracy features
     """
     num_moves = len(moves)
 
@@ -119,13 +101,7 @@ def calculate_move_quality_features(moves: List[Dict],
         }
 
     # If we don't have engine evaluations, use heuristic approximations
-    # based on move patterns (this is a simplification)
     if evaluations is None:
-        # Heuristic: estimate based on game length and result patterns
-        # In production, you would run Stockfish analysis
-
-        # Approximate blunder rate based on typical rates per skill level
-        # These are rough estimates from chess statistics
         base_blunder_rate = 0.05  # 5% base rate
         base_mistake_rate = 0.10  # 10% base rate
 
@@ -170,15 +146,7 @@ def calculate_move_quality_features(moves: List[Dict],
 
 
 def calculate_complexity_features(moves: List[Dict]) -> Dict[str, float]:
-    """
-    Calculate position complexity features.
-
-    Args:
-        moves: List of move dictionaries
-
-    Returns:
-        Dictionary with complexity features
-    """
+    """Calculate position complexity features using simple heuristics."""
     num_moves = len(moves)
 
     if num_moves == 0:
@@ -187,9 +155,6 @@ def calculate_complexity_features(moves: List[Dict]) -> Dict[str, float]:
             'material_imbalance_freq': np.nan,
             'piece_activity_score': np.nan
         }
-
-    # Heuristic complexity based on move types
-    # In production, you would analyze actual positions
 
     # Count captures, checks, promotions as indicators of tactical complexity
     tactical_moves = 0
@@ -203,11 +168,9 @@ def calculate_complexity_features(moves: List[Dict]) -> Dict[str, float]:
             if '=' in san:  # Promotion
                 tactical_moves += 1
 
-    # Normalize complexity score
     complexity_score = (tactical_moves / num_moves) * 100 if num_moves > 0 else 0
 
     # Estimate material imbalance (simplified)
-    # In production, track actual material
     material_imbalance = 0.2 + np.random.random() * 0.3
 
     # Piece activity score (simplified heuristic)
@@ -223,27 +186,12 @@ def calculate_complexity_features(moves: List[Dict]) -> Dict[str, float]:
 def calculate_opening_features(eco_code: str,
                                opening_name: str,
                                moves: List[Dict]) -> Dict[str, float]:
-    """
-    Calculate opening-related features.
-
-    Args:
-        eco_code: ECO classification code
-        opening_name: Name of the opening
-        moves: List of move dictionaries
-
-    Returns:
-        Dictionary with opening features
-    """
-    # Opening aggression score based on ECO code patterns
-    # Aggressive openings: Sicilian (B20-B99), King's Gambit (C30-C39), etc.
-    aggressive_ecos = ['B', 'C3', 'C4']  # Simplified
-
+    """Calculate opening-related features from ECO code and name."""
+    # Opening aggression score based on ECO code patterns (simplified)
     aggression_score = 50  # Default neutral
 
     if eco_code:
-        first_letter = eco_code[0] if eco_code else ''
-        eco_prefix = eco_code[:2] if len(eco_code) >= 2 else ''
-
+        first_letter = eco_code[0]
         if first_letter == 'B':  # Sicilian and other semi-open games
             aggression_score = 70
         elif first_letter == 'C':  # Open games
@@ -255,7 +203,6 @@ def calculate_opening_features(eco_code: str,
         elif first_letter == 'A':  # Flank openings
             aggression_score = 50
 
-    # Add some variation
     aggression_score += (np.random.random() - 0.5) * 20
 
     # Book deviation move (how early player deviates from known theory)
@@ -269,15 +216,7 @@ def calculate_opening_features(eco_code: str,
 
 
 def extract_game_features(game_data: Dict) -> Dict[str, float]:
-    """
-    Extract all features from a single game.
-
-    Args:
-        game_data: Dictionary with full game data
-
-    Returns:
-        Dictionary with all extracted features
-    """
+    """Extract all features from a single game dictionary."""
     features = {}
 
     # Basic game info
@@ -290,34 +229,37 @@ def extract_game_features(game_data: Dict) -> Dict[str, float]:
     features['num_moves'] = game_data.get('num_moves', 0)
     features['time_control_category'] = game_data.get('time_control_category', '')
     features['result'] = game_data.get('result', '')
+    # Opening identifiers (for repertoire features later)
+    features['opening_eco'] = game_data.get('opening_eco', '')
+    features['opening_name'] = game_data.get('opening_name', '')
 
     moves = game_data.get('moves', [])
     base_time = game_data.get('base_time', 300)
 
-    # Extract features for White
+    # Extract time features for White
     clock_times_white = game_data.get('clock_times_white', [])
     time_features_white = calculate_time_per_phase(clock_times_white, base_time, len(moves) // 2)
     for key, value in time_features_white.items():
         features[f'white_{key}'] = value
 
-    # Extract features for Black
+    # Extract time features for Black
     clock_times_black = game_data.get('clock_times_black', [])
     time_features_black = calculate_time_per_phase(clock_times_black, base_time, len(moves) // 2)
     for key, value in time_features_black.items():
         features[f'black_{key}'] = value
 
-    # Move quality features (combined)
+    # Move quality features (combined, then slightly perturbed per color)
     quality_features = calculate_move_quality_features(moves)
     for key, value in quality_features.items():
         features[f'white_{key}'] = value * (0.8 + np.random.random() * 0.4)
         features[f'black_{key}'] = value * (0.8 + np.random.random() * 0.4)
 
-    # Complexity features
+    # Complexity features (game-level)
     complexity_features = calculate_complexity_features(moves)
     for key, value in complexity_features.items():
         features[key] = value
 
-    # Opening features
+    # Opening features (game-level)
     opening_features = calculate_opening_features(
         game_data.get('opening_eco', ''),
         game_data.get('opening_name', ''),
@@ -326,20 +268,38 @@ def extract_game_features(game_data: Dict) -> Dict[str, float]:
     for key, value in opening_features.items():
         features[key] = value
 
+    # Color-asymmetry features (White minus Black) for time and error rates
+    if 'white_avg_time_opening' in features and 'black_avg_time_opening' in features:
+        features['avg_time_opening_white_minus_black'] = (
+            features['white_avg_time_opening'] - features['black_avg_time_opening']
+        )
+    if 'white_blunder_rate' in features and 'black_blunder_rate' in features:
+        features['blunder_rate_white_minus_black'] = (
+            features['white_blunder_rate'] - features['black_blunder_rate']
+        )
+    if 'white_accuracy_percentage' in features and 'black_accuracy_percentage' in features:
+        features['accuracy_white_minus_black'] = (
+            features['white_accuracy_percentage'] - features['black_accuracy_percentage']
+        )
+
+    # Tempo–complexity interaction features (time per unit complexity)
+    if 'avg_position_complexity' in features and features['avg_position_complexity'] is not None:
+        complexity = features['avg_position_complexity'] + 1e-3
+        for phase in ['opening', 'middlegame', 'endgame']:
+            t_key = f'white_avg_time_{phase}'
+            if t_key in features:
+                features[f'white_time_per_complexity_{phase}'] = features[t_key] / complexity
+
     return features
 
 
 def extract_features_from_dataframe(games_df: pd.DataFrame,
                                     full_games: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-    """
-    Extract features from a DataFrame of games.
+    """Extract features from a DataFrame of games.
 
-    Args:
-        games_df: DataFrame with basic game info
-        full_games: DataFrame with full game data including moves
-
-    Returns:
-        DataFrame with extracted features
+    If full_games (with moves/clock data) is provided, use it to compute
+    richer time/complexity features; otherwise, generate synthetic features
+    correlated with Elo as a fallback.
     """
     print("Extracting features from games...")
 
@@ -370,8 +330,7 @@ def extract_features_from_dataframe(games_df: pd.DataFrame,
         elo_norm = (elo - 600) / (2800 - 600)
 
         # Add significant noise to reduce perfect correlation (more realistic)
-        # Real chess data has much more variance - players at same rating can behave very differently
-        noise_factor = 0.6  # High noise to simulate real-world variation
+        noise_factor = 0.6
 
         # Time features - higher skill = better time management (with noise)
         features_df[f'{color}_avg_time_opening'] = 5 + elo_norm * 5 + np.random.randn(n) * 4 * noise_factor
@@ -398,6 +357,17 @@ def extract_features_from_dataframe(games_df: pd.DataFrame,
     features_df['opening_aggression_score'] = 50 + np.random.randn(n) * 20
     features_df['book_deviation_move'] = 10 + np.random.randn(n) * 5
 
+    # Color-asymmetry features for synthetic branch
+    features_df['avg_time_opening_white_minus_black'] = (
+        features_df['white_avg_time_opening'] - features_df['black_avg_time_opening']
+    )
+    features_df['blunder_rate_white_minus_black'] = (
+        features_df['white_blunder_rate'] - features_df['black_blunder_rate']
+    )
+    features_df['accuracy_white_minus_black'] = (
+        features_df['white_accuracy_percentage'] - features_df['black_accuracy_percentage']
+    )
+
     # Clip values to reasonable ranges (only numeric columns)
     numeric_cols = features_df.select_dtypes(include=[np.number]).columns
     for col in numeric_cols:
@@ -413,19 +383,16 @@ def extract_features_from_dataframe(games_df: pd.DataFrame,
 
 def aggregate_player_features(features_df: pd.DataFrame,
                               min_games: int = 20) -> pd.DataFrame:
-    """
-    Aggregate game-level features to player-level for clustering.
+    """Aggregate game-level features to player-level for clustering.
 
-    Args:
-        features_df: DataFrame with game-level features
-        min_games: Minimum games required for a player
-
-    Returns:
-        DataFrame with player-level aggregated features
+    In addition to mean/std for each per-color feature, this also computes
+    repertoire richness (unique openings, entropy) and accuracy volatility
+    metrics for White players, which are later averaged with Black-side
+    statistics when applicable.
     """
     print("Aggregating features at player level...")
 
-    player_features = []
+    player_features: List[Dict] = []
 
     # Process white players
     feature_cols = [c for c in features_df.columns if c.startswith('white_') and
@@ -435,22 +402,41 @@ def aggregate_player_features(features_df: pd.DataFrame,
         if len(group) < min_games:
             continue
 
-        player_data = {
+        player_data: Dict[str, float] = {
             'player': player,
             'num_games': len(group),
             'avg_elo': group['white_elo'].mean(),
             'skill_tier': group['white_skill_tier'].mode().iloc[0] if len(group) > 0 else 'Unknown'
         }
 
-        # Aggregate features
+        # Aggregate features (means/stds)
         for col in feature_cols:
             clean_col = col.replace('white_', '')
             player_data[f'{clean_col}_mean'] = group[col].mean()
             player_data[f'{clean_col}_std'] = group[col].std()
 
+        # Accuracy volatility & collapse fraction (White perspective)
+        if 'white_accuracy_percentage' in group.columns:
+            player_data['accuracy_percentage_std'] = group['white_accuracy_percentage'].std()
+            player_data['collapse_fraction'] = (
+                (group['white_accuracy_percentage'] < 70).mean()
+            )
+
+        # Opening repertoire richness based on ECO codes (White perspective)
+        if 'opening_eco' in group.columns:
+            ecos = group['opening_eco'].astype(str).fillna('')
+            families = ecos.str[0]
+            player_data['num_unique_openings'] = families.nunique()
+            freqs = families.value_counts(normalize=True)
+            if not freqs.empty:
+                entropy = -(freqs * np.log2(freqs + 1e-12)).sum()
+            else:
+                entropy = 0.0
+            player_data['opening_entropy'] = entropy
+
         player_features.append(player_data)
 
-    # Process black players similarly
+    # Process black players similarly and merge if player already exists
     feature_cols = [c for c in features_df.columns if c.startswith('black_') and
                     c not in ['black_player', 'black_skill_tier']]
 
@@ -458,10 +444,8 @@ def aggregate_player_features(features_df: pd.DataFrame,
         if len(group) < min_games:
             continue
 
-        # Check if player already exists (played as white)
         existing = [p for p in player_features if p['player'] == player]
         if existing:
-            # Merge with existing data
             player_data = existing[0]
             player_data['num_games'] += len(group)
         else:
@@ -483,9 +467,27 @@ def aggregate_player_features(features_df: pd.DataFrame,
                 player_data[mean_key] = group[col].mean()
                 player_data[std_key] = group[col].std()
             else:
-                # Average with existing values
                 player_data[mean_key] = (player_data[mean_key] + group[col].mean()) / 2
                 player_data[std_key] = (player_data[std_key] + group[col].std()) / 2
+
+        # Merge Black-side volatility metrics if available
+        if 'black_accuracy_percentage' in group.columns:
+            acc_std_black = group['black_accuracy_percentage'].std()
+            collapse_black = (group['black_accuracy_percentage'] < 70).mean()
+
+            if 'accuracy_percentage_std' not in player_data:
+                player_data['accuracy_percentage_std'] = acc_std_black
+            else:
+                player_data['accuracy_percentage_std'] = (
+                    player_data['accuracy_percentage_std'] + acc_std_black
+                ) / 2
+
+            if 'collapse_fraction' not in player_data:
+                player_data['collapse_fraction'] = collapse_black
+            else:
+                player_data['collapse_fraction'] = (
+                    player_data['collapse_fraction'] + collapse_black
+                ) / 2
 
     return pd.DataFrame(player_features)
 
@@ -493,14 +495,7 @@ def aggregate_player_features(features_df: pd.DataFrame,
 def save_features(features_df: pd.DataFrame,
                   player_features_df: pd.DataFrame,
                   output_dir: Path = PROCESSED_DATA_DIR):
-    """
-    Save extracted features to disk.
-
-    Args:
-        features_df: Game-level features
-        player_features_df: Player-level features
-        output_dir: Directory to save files
-    """
+    """Save extracted game- and player-level features to disk."""
     features_df.to_parquet(output_dir / "game_features.parquet")
     player_features_df.to_parquet(output_dir / "player_features.parquet")
 
@@ -512,22 +507,18 @@ if __name__ == "__main__":
     print("ChessInsight Feature Extractor")
     print("=" * 50)
 
-    # Load processed games
     games_path = PROCESSED_DATA_DIR / "games_processed.parquet"
 
     if games_path.exists():
         games_df = pd.read_parquet(games_path)
         print(f"Loaded {len(games_df)} games")
 
-        # Extract features
         features_df = extract_features_from_dataframe(games_df)
         print(f"Extracted features for {len(features_df)} games")
 
-        # Aggregate to player level
         player_features = aggregate_player_features(features_df, min_games=5)
         print(f"Aggregated features for {len(player_features)} players")
 
-        # Save
         save_features(features_df, player_features)
     else:
         print(f"No processed games found at {games_path}")
