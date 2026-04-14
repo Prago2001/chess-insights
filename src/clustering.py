@@ -519,12 +519,39 @@ if __name__ == "__main__":
         X, feature_cols = prepare_clustering_data(player_features)
         print(f"Using {len(feature_cols)} features for clustering")
 
-        # Find optimal k
-        k_results = find_optimal_k(X.values, k_range=(3, 7))
-        optimal_k = k_results['optimal_k']
+        # Evaluate k in [3, 5] but use 4 clusters for improved interpretability
+        k_results = find_optimal_k(X.values, k_range=(3, 5))
+        optimal_k = 4
+        print(
+            f"Using n_clusters={optimal_k} for behavioral clustering "
+            "based on t-SNE inspection and internal metrics."
+        )
 
-        # Perform clustering with the primary method (k-means)
-        results = perform_clustering(X, n_clusters=optimal_k, method='kmeans')
+        # Compare multiple clustering methods and save comparison
+        from pathlib import Path as _Path
+
+        print("\nEvaluating alternative clustering methods on the same features (k = 4)...")
+        method_comparison_df = compare_clustering_methods(X, n_clusters=optimal_k)
+        comparison_path = MODELS_DIR / "clustering_method_comparison.csv"
+        method_comparison_df.to_csv(comparison_path, index=False)
+        print(f"Saved clustering method comparison to {comparison_path}")
+        if not method_comparison_df.empty:
+            print(method_comparison_df.to_string(index=False))
+
+        # Select primary clustering method based on silhouette (then Davies–Bouldin)
+        if not method_comparison_df.empty:
+            method_sorted = method_comparison_df.sort_values(
+                ["silhouette_score", "davies_bouldin_index"],
+                ascending=[False, True],
+            )
+            best_method = method_sorted.iloc[0]["method"]
+        else:
+            best_method = "kmeans"
+
+        print(f"\nSelected primary clustering method: {best_method} (k = {optimal_k})")
+
+        # Perform clustering with the selected primary method
+        results = perform_clustering(X, n_clusters=optimal_k, method=best_method)
 
         # Analyze clusters
         cluster_stats = analyze_clusters(player_features, results['labels'], feature_cols)
