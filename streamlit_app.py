@@ -99,9 +99,12 @@ except Exception as e:  # pragma: no cover - runtime safeguard
     )
     st.stop()
 
-# Build cluster name map and attach to player_df
+# Build cluster name map and attach to player_df (pipeline baseline)
 cluster_name_map = {int(k): v["name"] for k, v in clustering_results["cluster_names"].items()}
 player_df["cluster_name"] = player_df["cluster"].map(cluster_name_map)
+
+# Default k from pipeline results
+DEFAULT_K = clustering_results.get("n_clusters", len(cluster_name_map))
 
 # Confusion matrix as numpy array
 cm_labels = list(confusion_csv.columns[1:])
@@ -158,7 +161,7 @@ def render_kpi(label: str, value: str, help_text: Optional[str] = None):
 # ---------------------------------------------------------------------------
 # Overview Tab
 # ---------------------------------------------------------------------------
-def render_overview_tab():
+def render_overview_tab(k_selected: int):
     st.subheader("Overview")
 
     ds = analysis["dataset"]
@@ -173,7 +176,11 @@ def render_overview_tab():
     with kpi_cols[2]:
         render_kpi("Test Accuracy", cl["test_accuracy"], "Exact tier classification accuracy")
     with kpi_cols[3]:
-        render_kpi("Clusters Found", str(clu["n_clusters"]), f"Silhouette: {clu['silhouette_score']}")
+        render_kpi(
+            "Clusters (k)",
+            str(k_selected),
+            f"Pipeline baseline used k = {clu['n_clusters']}",
+        )
 
     # Skill tier distribution
     tier_counts = pd.DataFrame(
@@ -225,17 +232,28 @@ def render_overview_tab():
 
 
 # ---------------------------------------------------------------------------
-# Player Cluster Map Tab (with per-player drill-down and k slider)
+# Player Cluster Map Tab (with per-player drill-down and global k)
 # ---------------------------------------------------------------------------
-def render_cluster_tab():
+def render_cluster_tab(k_selected: int):
     st.subheader("Player Cluster Map")
+
+    # Compute k-means on 2D embedding for interactive visualization (shared across controls/plot)
+    coords = player_df[["x", "y"]].values
+    kmeans = KMeans(n_clusters=k_selected, random_state=42, n_init=10)
+    viz_labels_all = kmeans.fit_predict(coords)
+
+    player_viz = player_df.copy()
+    player_viz["viz_cluster"] = viz_labels_all
+    player_viz["viz_cluster_name"] = [
+        f"Cluster {c + 1}" for c in player_viz["viz_cluster"]
+    ]
 
     col_controls, col_plot = st.columns([1, 3])
 
     with col_controls:
         color_by = st.radio(
             "Color By",
-            options=["Cluster (k slider)", "Skill Tier"],
+            options=["Cluster (k)", "Skill Tier"],
             index=0,
         )
 
@@ -246,8 +264,8 @@ def render_cluster_tab():
             key="cluster_tiers_multiselect",
         )
 
-        min_elo = int(player_df["avg_elo"].min())
-        max_elo = int(player_df["avg_elo"].max())
+        min_elo = int(player_viz["avg_elo"].min())
+        max_elo = int(player_viz["avg_elo"].max())
         rating_min, rating_max = st.slider(
             "Rating Range",
             min_value=min_elo,
@@ -256,26 +274,14 @@ def render_cluster_tab():
             step=50,
         )
 
-        k_viz = st.slider(
-            "Number of clusters for visualization (k)",
-            min_value=3,
-            max_value=8,
-            value=clustering_results.get("n_clusters", 4),
-            step=1,
+        st.markdown(f"**Cluster Summary (k = {k_selected})**")
+        summary_df = (
+            player_viz.groupby("viz_cluster_name")
+            .agg(Size=("player", "count"), AvgElo=("avg_elo", "mean"))
+            .reset_index()
         )
-
-        st.markdown("**Cluster Summary (from pipeline)**")
-        summary_rows = []
-        for cid in sorted(cluster_name_map.keys()):
-            info = clustering_results["cluster_names"][str(cid)]
-            summary_rows.append(
-                {
-                    "Cluster": info["name"],
-                    "Size": info["size"],
-                    "Avg Elo": round(info["avg_elo"]),
-                }
-            )
-        summary_df = pd.DataFrame(summary_rows)
+        summary_df["AvgElo"] = summary_df["AvgElo"].round(0).astype(int)
+        summary_df.rename(columns={"viz_cluster_name": "Cluster", "AvgElo": "Avg Elo"}, inplace=True)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
         st.markdown("**Player Drill-Down**")
@@ -286,12 +292,12 @@ def render_cluster_tab():
         )
         selected_player = None
         if player_query:
-            matches = player_df[player_df["player"] == player_query]
+            matches = player_viz[player_viz["player"] == player_query]
             if not matches.empty:
                 selected_player = matches.iloc[0]
                 st.markdown(
                     f"**Selected player:** `{player_query}`  |  Elo: {selected_player['avg_elo']:.0f}  "
-                    f"|  Tier: {selected_player['skill_tier']}  |  Cluster: {selected_player['cluster_name']}"
+                    f"|  Tier: {selected_player['skill_tier']}  |  Cluster (k={k_selected}): {selected_player['viz_cluster_name']}"
                 )
                 st.markdown(
                     f"Games analyzed: **{int(selected_player.get('num_games', 0))}**"
@@ -302,17 +308,6 @@ def render_cluster_tab():
             st.caption("Tip: paste a handle from the scatterplot tooltip to inspect a player.")
 
     with col_plot:
-        # Compute k-means on 2D embedding for interactive visualization
-        coords = player_df[["x", "y"]].values
-        kmeans = KMeans(n_clusters=k_viz, random_state=42, n_init=10)
-        viz_labels_all = kmeans.fit_predict(coords)
-
-        player_viz = player_df.copy()
-        player_viz["viz_cluster"] = viz_labels_all
-        player_viz["viz_cluster_name"] = [
-            f"Cluster {c + 1}" for c in player_viz["viz_cluster"]
-        ]
-
         df = player_viz[
             (player_viz["skill_tier"].isin(tiers_selected))
             & (player_viz["avg_elo"] >= rating_min)
@@ -326,7 +321,7 @@ def render_cluster_tab():
                 y="y",
                 color="skill_tier",
                 color_discrete_map=TIER_COLORS,
-                hover_data=["player", "avg_elo", "num_games", "cluster_name"],
+                hover_data=["player", "avg_elo", "num_games", "viz_cluster_name"],
                 title=f"Player Embedding Map — {len(df):,} players",
                 labels={
                     "x": "Embedding Dim 1",
@@ -343,7 +338,7 @@ def render_cluster_tab():
                 color="viz_cluster_name",
                 color_discrete_sequence=CLUSTER_COLORS,
                 hover_data=["player", "avg_elo", "num_games", "skill_tier"],
-                title=f"Player Embedding Map — k = {k_viz}",
+                title=f"Player Embedding Map — k = {k_selected}",
                 labels={
                     "x": "Embedding Dim 1",
                     "y": "Embedding Dim 2",
@@ -525,7 +520,7 @@ def render_classification_tab():
         orientation="h",
         color="importance",
         color_continuous_scale="Viridis",
-        title="Top 15 Feature Importances (Random Forest)",
+        title="Top 15 Feature Importances (Classifier)",
         labels={"importance": "Importance", "feature_clean": "Feature"},
     )
     fig_fi.update_layout(
@@ -558,7 +553,7 @@ def render_classification_tab():
         st.table(metrics_df)
         st.markdown(
             """
-            - Model: Random Forest using 18 behavioral features.
+            - Model: Best-performing classifier from the pipeline (see repo for details).
             - "Adjacent accuracy" treats predictions within ±1 tier as correct.
             - Most mistakes occur between neighboring tiers (e.g., Intermediate vs. Advanced).
             """
@@ -568,48 +563,52 @@ def render_classification_tab():
 
 
 # ---------------------------------------------------------------------------
-# Cluster Analysis Tab
+# Cluster Analysis Tab (driven by global k)
 # ---------------------------------------------------------------------------
-def render_cluster_analysis_tab():
+def render_cluster_analysis_tab(k_selected: int):
     st.subheader("Behavioral Clusters and Quality Metrics")
 
-    # Cluster size pie chart
-    clu_sizes = []
-    for cid, info in clustering_results["cluster_names"].items():
-        clu_sizes.append(
-            {
-                "Cluster": info["name"],
-                "Size": info["size"],
-                "Avg Elo": round(info["avg_elo"]),
-            }
-        )
-    clu_df = pd.DataFrame(clu_sizes)
+    # Recompute k-means clusters on the 2D embedding to align with global k
+    coords = player_df[["x", "y"]].values
+    kmeans = KMeans(n_clusters=k_selected, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(coords)
+
+    df = player_df.copy()
+    df["viz_cluster"] = labels
+    df["viz_cluster_name"] = [f"Cluster {c + 1}" for c in df["viz_cluster"]]
+
+    # Cluster size and Elo
+    clu_df = (
+        df.groupby("viz_cluster_name")
+        .agg(Size=("player", "count"), AvgElo=("avg_elo", "mean"))
+        .reset_index()
+    )
+    clu_df["Avg Elo"] = clu_df["AvgElo"].round(0).astype(int)
+    clu_df.rename(columns={"viz_cluster_name": "Cluster"}, inplace=True)
+
     fig_pie = px.pie(
         clu_df,
         values="Size",
         names="Cluster",
-        title="Cluster Size Distribution",
+        title=f"Cluster Size Distribution (k = {k_selected})",
         color_discrete_sequence=CLUSTER_COLORS,
         hole=0.35,
     )
     fig_pie.update_layout(height=400)
 
-    # Skill composition per cluster (stacked bar)
-    comp_data = []
-    for _, row in cluster_stats.iterrows():
-        cid = int(row["cluster"])
-        name = cluster_name_map.get(cid, f"Cluster {cid + 1}")
-        for tier in SKILL_TIERS:
-            col = f"pct_{tier.lower()}"
-            if col in row:
-                comp_data.append(
-                    {
-                        "Cluster": name,
-                        "Skill Tier": tier,
-                        "Percentage": row[col],
-                    }
-                )
-    comp_df = pd.DataFrame(comp_data)
+    # Skill composition per cluster (stacked bar, percentages)
+    comp_counts = (
+        df.groupby(["viz_cluster_name", "skill_tier"])
+        .size()
+        .reset_index(name="count")
+    )
+    if not comp_counts.empty:
+        comp_counts["cluster_total"] = comp_counts.groupby("viz_cluster_name")["count"].transform("sum")
+        comp_counts["Percentage"] = comp_counts["count"] / comp_counts["cluster_total"] * 100
+        comp_df = comp_counts.rename(columns={"viz_cluster_name": "Cluster", "skill_tier": "Skill Tier"})
+    else:
+        comp_df = pd.DataFrame(columns=["Cluster", "Skill Tier", "Percentage"])
+
     fig_comp = px.bar(
         comp_df,
         x="Cluster",
@@ -632,7 +631,7 @@ def render_cluster_analysis_tab():
     )
     fig_elo.update_layout(showlegend=False, height=370)
 
-    # Clustering methods comparison table
+    # Clustering methods comparison table (pipeline baseline, k may differ)
     mc = method_comparison.copy()
     mc["silhouette_score"] = mc["silhouette_score"].round(3)
     mc["calinski_harabasz_index"] = mc["calinski_harabasz_index"].round(1)
@@ -646,7 +645,7 @@ def render_cluster_analysis_tab():
     ]]
     mc.columns = [
         "Method",
-        "k",
+        "k (offline)",
         "Silhouette",
         "Calinski-Harabasz",
         "Davies-Bouldin",
@@ -662,17 +661,19 @@ def render_cluster_analysis_tab():
     with col_bottom[0]:
         st.plotly_chart(fig_elo, use_container_width=True)
     with col_bottom[1]:
-        st.markdown("**Clustering Method Comparison**")
+        st.markdown("**Clustering Method Comparison (Pipeline Baseline)**")
         st.table(mc)
 
         primary_method = clustering_results.get("method", "kmeans")
         primary_k = clustering_results.get("n_clusters", len(cluster_name_map))
         st.markdown(
-            f"- Primary clustering: **{primary_method}** with **k = {primary_k}** as used in the pipeline."
+            f"- **Current dashboard k:** {k_selected} (used in the charts on this page and in the Player Cluster Map tab)."
         )
         st.markdown(
-            "- Alternative methods in the table may achieve better internal metrics "
-            "(e.g., higher silhouette, lower Davies–Bouldin) and can guide future refinements."
+            f"- **Pipeline baseline:** {primary_method} with k = {primary_k} (see `run_analysis.py` for details)."
+        )
+        st.markdown(
+            "- Offline metrics in the table above were computed for the baseline configuration and can guide future model tuning."
         )
 
 
@@ -794,18 +795,27 @@ def main():
     st.title("ChessInsight Dashboard")
     st.caption("Team 029 · CSE6242 · Spring 2026")
 
-    st.sidebar.header("How to use this dashboard")
+    st.sidebar.header("Dashboard Controls")
+    k_global = st.sidebar.slider(
+        "Number of clusters (k)",
+        min_value=3,
+        max_value=8,
+        value=DEFAULT_K,
+        step=1,
+        help="Controls the number of clusters used across all cluster-related views.",
+    )
+    st.sidebar.caption(
+        "This k applies to the Player Cluster Map and Behavioral Clusters tabs, and "
+        "is reflected in the Overview KPIs."
+    )
+
     st.sidebar.markdown(
         """
-        1. Run `python run_analysis.py` once to generate processed data and model artifacts.
+        **How to run locally**
+
+        1. Run `python run_analysis.py` once to generate processed data and models.
         2. Start the app with `streamlit run streamlit_app.py`.
-        3. Use the tabs above to explore:
-           - High-level dataset and model KPIs
-           - Player behavior map with adjustable k
-           - Time management patterns across skill tiers
-           - Classification performance and feature importances
-           - Cluster compositions and method quality
-           - Opening patterns across skill tiers
+        3. Adjust the cluster slider above to explore different k.
         """
     )
 
@@ -821,15 +831,15 @@ def main():
     )
 
     with tabs[0]:
-        render_overview_tab()
+        render_overview_tab(k_global)
     with tabs[1]:
-        render_cluster_tab()
+        render_cluster_tab(k_global)
     with tabs[2]:
         render_time_tab()
     with tabs[3]:
         render_classification_tab()
     with tabs[4]:
-        render_cluster_analysis_tab()
+        render_cluster_analysis_tab(k_global)
     with tabs[5]:
         render_openings_tab()
 
