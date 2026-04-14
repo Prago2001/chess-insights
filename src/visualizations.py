@@ -198,17 +198,17 @@ def plot_cluster_embedding(embedding_df: pd.DataFrame,
         mask = embedding_df['cluster'] == cluster_id
         cluster_data = embedding_df[mask]
 
-        label = cluster_names.get(cluster_id, {}).get('name', f'Cluster {cluster_id}')
+        label = cluster_names.get(cluster_id, {}).get('name', f'Cluster {cluster_id + 1}')
 
         ax.scatter(cluster_data['x'], cluster_data['y'],
                    c=[color_map[cluster_id]], label=label,
                    alpha=0.6, s=50, edgecolors='white', linewidth=0.5)
 
-    ax.set_title('Player Behavioral Clusters (t-SNE Embedding)',
+    ax.set_title('Player Clusters (2D Embedding)',
                  fontsize=14, fontweight='bold')
     ax.set_xlabel('Dimension 1')
     ax.set_ylabel('Dimension 2')
-    ax.legend(loc='best', title='Player Archetypes')
+    ax.legend(loc='best', title='Clusters')
 
     # Add grid
     ax.grid(True, alpha=0.3)
@@ -251,7 +251,7 @@ def plot_cluster_characteristics(cluster_stats: pd.DataFrame,
 
     for i, (_, row) in enumerate(cluster_stats.iterrows()):
         cluster_id = int(row['cluster'])
-        label = cluster_names.get(cluster_id, {}).get('name', f'Cluster {cluster_id}')
+        label = cluster_names.get(cluster_id, {}).get('name', f'Cluster {cluster_id + 1}')
         values = [row[col] if col in row and pd.notna(row[col]) else 0 for col in metric_cols]
 
         # Normalize values for comparison
@@ -267,7 +267,7 @@ def plot_cluster_characteristics(cluster_stats: pd.DataFrame,
     ax.set_xticks(x + width * (n_clusters - 1) / 2)
     ax.set_xticklabels([c.replace('_mean', '').replace('_', ' ').title()[:15]
                         for c in metric_cols], rotation=45, ha='right')
-    ax.legend(title='Archetypes')
+    ax.legend(title='Clusters')
 
     plt.tight_layout()
 
