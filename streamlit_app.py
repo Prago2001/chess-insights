@@ -242,6 +242,7 @@ def render_cluster_tab():
             "Filter Skill Tiers",
             options=SKILL_TIERS,
             default=SKILL_TIERS,
+            key="cluster_tiers_multiselect",
         )
 
         min_elo = int(player_df["avg_elo"].min())
@@ -683,6 +684,7 @@ def render_openings_tab():
         "Filter Skill Tiers",
         options=SKILL_TIERS,
         default=SKILL_TIERS,
+        key="openings_tiers_multiselect",
     )
     games = games[games["white_skill_tier"].isin(tiers_selected)]
 
