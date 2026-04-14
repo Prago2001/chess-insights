@@ -335,24 +335,39 @@ def run_full_pipeline(
     X_cluster, feature_cols = prepare_clustering_data(player_features)
     print(f"Clustering data: {len(X_cluster)} players, {len(feature_cols)} features")
 
-    # Find optimal k for k-means
+    # Evaluate k in [3, 5] but use 4 clusters for improved interpretability
     k_results = find_optimal_k(X_cluster.values, k_range=(3, 5))
-    optimal_k = k_results["optimal_k"]
-
-    # Perform primary clustering with k-means
-    clustering_results = perform_clustering(
-        X_cluster, n_clusters=optimal_k, method="kmeans"
+    optimal_k = 4
+    print(
+        f"Using n_clusters={optimal_k} for primary behavioral clustering "
+        "based on t-SNE inspection and internal metrics."
     )
 
-    # Optionally compare multiple clustering methods and save comparison
-    print("\nEvaluating alternative clustering methods on the same features...")
-    method_comparison_df = compare_clustering_methods(
-        X_cluster, n_clusters=optimal_k
-    )
+    # Compare multiple clustering methods at k = 4 and save comparison
+    print("\nEvaluating alternative clustering methods on the same features (k = 4)...")
+    method_comparison_df = compare_clustering_methods(X_cluster, n_clusters=optimal_k)
     comparison_path = MODELS_DIR / "clustering_method_comparison.csv"
     method_comparison_df.to_csv(comparison_path, index=False)
     print(f"Saved clustering method comparison to {comparison_path}")
-    print(method_comparison_df.to_string(index=False))
+    if not method_comparison_df.empty:
+        print(method_comparison_df.to_string(index=False))
+
+    # Select primary clustering method based on silhouette (then Davies–Bouldin)
+    if not method_comparison_df.empty:
+        method_sorted = method_comparison_df.sort_values(
+            ["silhouette_score", "davies_bouldin_index"],
+            ascending=[False, True],
+        )
+        best_method = method_sorted.iloc[0]["method"]
+    else:
+        best_method = "kmeans"
+
+    print(f"\nSelected primary clustering method: {best_method} (k = {optimal_k})")
+
+    # Perform primary clustering with the selected method
+    clustering_results = perform_clustering(
+        X_cluster, n_clusters=optimal_k, method=best_method
+    )
 
     # Analyze and name clusters for the primary model
     cluster_stats = analyze_clusters(

@@ -11,6 +11,7 @@ precomputed artifacts in `data/processed/` and `models/`.
 
 import json
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -60,6 +61,12 @@ def load_game_features() -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
+def load_games_processed() -> pd.DataFrame:
+    """Load game-level data used for opening pattern analysis."""
+    return pd.read_parquet(PROCESSED_DATA_DIR / "games_processed.parquet")
+
+
+@st.cache_data(show_spinner=False)
 def load_json(name: str) -> dict:
     with open(MODELS_DIR / name) as f:
         return json.load(f)
@@ -71,17 +78,25 @@ def load_csv(name: str) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Load all core artifacts once per session
+# Load all core artifacts once per session with basic error handling
 # ---------------------------------------------------------------------------
-player_df = load_player_data()
-game_df = load_game_features()
-analysis = load_json("analysis_summary.json")
-clustering_results = load_json("player_clustering_results.json")
-classifier_metrics = load_json("skill_classifier_metrics.json")
-feature_importance = load_csv("skill_classifier_feature_importance.csv")
-confusion_csv = load_csv("skill_classifier_confusion_matrix.csv")
-cluster_stats = load_csv("player_clustering_statistics.csv")
-method_comparison = load_csv("clustering_method_comparison.csv")
+try:
+    player_df = load_player_data()
+    game_df = load_game_features()
+    analysis = load_json("analysis_summary.json")
+    clustering_results = load_json("player_clustering_results.json")
+    classifier_metrics = load_json("skill_classifier_metrics.json")
+    feature_importance = load_csv("skill_classifier_feature_importance.csv")
+    confusion_csv = load_csv("skill_classifier_confusion_matrix.csv")
+    cluster_stats = load_csv("player_clustering_statistics.csv")
+    method_comparison = load_csv("clustering_method_comparison.csv")
+except Exception as e:  # pragma: no cover - runtime safeguard
+    st.error(
+        "Failed to load processed data and model artifacts. "
+        "Please run `python run_analysis.py` first so that `data/processed/` "
+        "and `models/` are populated.\n\nDetails: " + str(e)
+    )
+    st.stop()
 
 # Build cluster name map and attach to player_df
 cluster_name_map = {int(k): v["name"] for k, v in clustering_results["cluster_names"].items()}
@@ -135,7 +150,7 @@ accuracy_df = pd.DataFrame(accuracy_by_tier)
 # ---------------------------------------------------------------------------
 # Helper to render a numeric KPI-style block
 # ---------------------------------------------------------------------------
-def render_kpi(label: str, value: str, help_text: str | None = None):
+def render_kpi(label: str, value: str, help_text: Optional[str] = None):
     st.metric(label=label, value=value, help=help_text)
 
 
@@ -209,7 +224,7 @@ def render_overview_tab():
 
 
 # ---------------------------------------------------------------------------
-# Player Cluster Map Tab
+# Player Cluster Map Tab (with per-player drill-down)
 # ---------------------------------------------------------------------------
 def render_cluster_tab():
     st.subheader("Player Cluster Map")
@@ -253,6 +268,29 @@ def render_cluster_tab():
         summary_df = pd.DataFrame(summary_rows)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
+        st.markdown("**Player Drill-Down**")
+        player_query = st.text_input(
+            "Enter player handle (exact match)",
+            "",
+            help="Type a specific Lichess player handle present in the dataset.",
+        )
+        selected_player = None
+        if player_query:
+            matches = player_df[player_df["player"] == player_query]
+            if not matches.empty:
+                selected_player = matches.iloc[0]
+                st.markdown(
+                    f"**Selected player:** `{player_query}`  |  Elo: {selected_player['avg_elo']:.0f}  "
+                    f"|  Tier: {selected_player['skill_tier']}  |  Archetype: {selected_player['cluster_name']}"
+                )
+                st.markdown(
+                    f"Games analyzed: **{int(selected_player.get('num_games', 0))}**"
+                )
+            else:
+                st.info("No player found with that handle in the processed dataset.")
+        else:
+            st.caption("Tip: paste a handle from the scatterplot tooltip to inspect a player.")
+
     with col_plot:
         df = player_df[
             (player_df["skill_tier"].isin(tiers_selected))
@@ -292,7 +330,26 @@ def render_cluster_tab():
                 },
             )
 
-        fig.update_traces(marker=dict(size=4, opacity=0.6, line=dict(width=0)))
+        # Highlight selected player if present
+        if "selected_player" in locals() and selected_player is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[selected_player["x"]],
+                    y=[selected_player["y"]],
+                    mode="markers",
+                    marker=dict(
+                        size=12,
+                        color="black",
+                        symbol="x",
+                        line=dict(width=2, color="white"),
+                    ),
+                    name="Selected Player",
+                    hovertext=[f"Selected: {selected_player['player']}`"],
+                    hoverinfo="text",
+                )
+            )
+
+        fig.update_traces(marker=dict(size=4, opacity=0.6, line=dict(width=0)), selector=dict(mode="markers"))
         fig.update_layout(
             margin=dict(l=10, r=10, t=60, b=10),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -583,13 +640,126 @@ def render_cluster_analysis_tab():
     with col_bottom[1]:
         st.markdown("**Clustering Method Comparison**")
         st.table(mc)
+
+        primary_method = clustering_results.get("method", "kmeans")
+        primary_k = clustering_results.get("n_clusters", len(cluster_name_map))
         st.markdown(
-            """
-            - K-Means (k = 5) provides interpretable archetypes and competitive internal metrics.
-            - Birch achieves a higher silhouette score and lower Davies–Bouldin index and is a
-              strong candidate for future refinement.
-            """
+            f"- Primary clustering: **{primary_method}** with **k = {primary_k}** as used in the dashboard."
         )
+        st.markdown(
+            "- Alternative methods in the table may achieve better internal metrics "
+            "(e.g., higher silhouette, lower Davies–Bouldin) and can guide future refinements."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Opening Patterns Tab
+# ---------------------------------------------------------------------------
+def render_openings_tab():
+    st.subheader("Opening Patterns by Skill Tier")
+
+    try:
+        games = load_games_processed()
+    except Exception as e:  # pragma: no cover - runtime safeguard
+        st.warning(
+            "Opening pattern analysis requires `games_processed.parquet`. "
+            "Please rerun `python run_analysis.py` to regenerate processed games.\n\n"
+            f"Details: {e}"
+        )
+        return
+
+    if games is None or games.empty:
+        st.info("No games available for opening analysis.")
+        return
+
+    if "white_skill_tier" not in games.columns:
+        st.warning(
+            "Could not find `white_skill_tier` in processed games. "
+            "Opening patterns by tier cannot be computed."
+        )
+        return
+
+    tiers_selected = st.multiselect(
+        "Filter Skill Tiers",
+        options=SKILL_TIERS,
+        default=SKILL_TIERS,
+    )
+    games = games[games["white_skill_tier"].isin(tiers_selected)]
+
+    if games.empty:
+        st.info("No games remain after applying the selected skill-tier filters.")
+        return
+
+    if "opening_name" in games.columns:
+        opening_col = "opening_name"
+        opening_label = "Opening Name"
+    elif "opening_eco" in games.columns:
+        opening_col = "opening_eco"
+        opening_label = "ECO Code"
+    else:
+        st.warning(
+            "Could not find `opening_name` or `opening_eco` in processed games. "
+            "Opening pattern visualization is not available."
+        )
+        return
+
+    top_n = st.slider(
+        "Number of top openings to show per tier",
+        min_value=5,
+        max_value=20,
+        value=10,
+        step=1,
+    )
+
+    counts = (
+        games.groupby(["white_skill_tier", opening_col])
+        .size()
+        .reset_index(name="count")
+    )
+
+    # Keep top-N openings per tier
+    top_frames = []
+    for tier in tiers_selected:
+        tier_counts = (
+            counts[counts["white_skill_tier"] == tier]
+            .sort_values("count", ascending=False)
+            .head(top_n)
+        )
+        top_frames.append(tier_counts)
+
+    if not top_frames:
+        st.info("No openings found for the selected configuration.")
+        return
+
+    top_counts = pd.concat(top_frames, ignore_index=True)
+
+    fig = px.bar(
+        top_counts,
+        x="count",
+        y=opening_col,
+        color="white_skill_tier",
+        orientation="h",
+        title=f"Top {top_n} openings by skill tier",
+        labels={
+            "count": "Games",
+            opening_col: opening_label,
+            "white_skill_tier": "Skill Tier",
+        },
+        color_discrete_map=TIER_COLORS,
+        category_orders={"white_skill_tier": SKILL_TIERS},
+    )
+    fig.update_layout(
+        height=550,
+        yaxis={"categoryorder": "total ascending"},
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown(
+        "This view highlights which openings are most frequently played at each skill tier "
+        "based on the processed Lichess games."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +780,7 @@ def main():
            - Time management patterns across skill tiers
            - Classification performance and feature importances
            - Cluster compositions and method quality
+           - Opening patterns across skill tiers
         """
     )
 
@@ -620,6 +791,7 @@ def main():
             "Time Analysis",
             "Classification",
             "Cluster Analysis",
+            "Opening Patterns",
         ]
     )
 
@@ -633,6 +805,8 @@ def main():
         render_classification_tab()
     with tabs[4]:
         render_cluster_analysis_tab()
+    with tabs[5]:
+        render_openings_tab()
 
 
 if __name__ == "__main__":
