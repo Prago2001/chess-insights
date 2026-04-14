@@ -5,7 +5,7 @@ Team 029 - CSE6242 Spring 2026
 This script runs the complete analysis pipeline:
 1. Generate/load game data
 2. Extract features
-3. Train skill classifier
+3. Train skill classifiers (RF, XGB, GB, Ensemble)
 4. Perform clustering
 5. Generate visualizations
 6. Output results summary
@@ -69,28 +69,21 @@ from src.visualizations import (
 )
 
 
+# ---------------------------------------------------------------------------
+# Data loading helpers
+# ---------------------------------------------------------------------------
+
 def load_real_dataset(
     pgn_path: Path = PGN_FILE_PATH,
     n_games: int = SAMPLE_SIZE,
     force_reload: bool = False,
 ) -> tuple:
-    """
-    Load real chess game data from a PGN file.
+    """Load real chess game data from a PGN file.
 
     Data is stored and read as Parquet chunk files created by
     load_or_create_dataset() in data_loader.py, located under:
         PROCESSED_DATA_DIR / "chunks" / games_processed_part_XXXX.parquet
         PROCESSED_DATA_DIR / "chunks" / games_full_part_XXXX.parquet
-
-    Args:
-        pgn_path: Path to the PGN file
-        n_games: Maximum number of games to load
-        force_reload: Force re-parsing even if cached chunk data exists
-
-    Returns:
-        Tuple of (games_df, full_games_df) where:
-        - games_df: DataFrame with basic game info
-        - full_games_df: DataFrame with full game data (moves / clock data)
     """
     chunks_dir = PROCESSED_DATA_DIR / "chunks"
     processed_chunks = sorted(chunks_dir.glob("games_processed_part_*.parquet"))
@@ -154,45 +147,28 @@ def load_real_dataset(
 def generate_synthetic_dataset(
     n_games: int = 50000, random_state: int = RANDOM_STATE
 ) -> pd.DataFrame:
-    """
-    Generate a realistic synthetic chess game dataset.
-    (Kept for testing/fallback purposes)
-
-    This simulates the structure and patterns we would see in real Lichess data,
-    with correlations between skill level and behavioral features.
-
-    Args:
-        n_games: Number of games to generate
-        random_state: Random seed for reproducibility
-
-    Returns:
-        DataFrame with synthetic game data
-    """
+    """Generate a realistic synthetic chess game dataset (for testing)."""
     print(f"Generating synthetic dataset with {n_games} games...")
     np.random.seed(random_state)
 
     # Generate player ratings with realistic distribution
-    # Lichess ratings are roughly normally distributed around 1500
     white_elo = np.random.normal(1500, 350, n_games).clip(600, 2800).astype(int)
     black_elo = np.random.normal(1500, 350, n_games).clip(600, 2800).astype(int)
 
-    # Assign skill tiers
     def get_skill_tier(elo):
         for tier, (low, high) in SKILL_TIERS.items():
             if low <= elo < high:
                 return tier
-        return "Master"
+        return "Expert"
 
     white_skill_tier = [get_skill_tier(e) for e in white_elo]
     black_skill_tier = [get_skill_tier(e) for e in black_elo]
 
-    # Generate player names (anonymized)
-    n_unique_players = n_games // 10  # Each player has ~10 games on average
+    n_unique_players = n_games // 10
     player_pool = [f"player_{i:06d}" for i in range(n_unique_players)]
     white_player = np.random.choice(player_pool, n_games)
     black_player = np.random.choice(player_pool, n_games)
 
-    # Time controls
     time_controls = ["180+0", "180+2", "300+0", "300+3", "600+0", "600+5"]
     time_control_categories = ["blitz", "blitz", "blitz", "blitz", "rapid", "rapid"]
     tc_idx = np.random.choice(len(time_controls), n_games)
@@ -200,39 +176,22 @@ def generate_synthetic_dataset(
     time_control_category = [time_control_categories[i] for i in tc_idx]
     base_time = [int(time_controls[i].split("+")[0]) for i in tc_idx]
 
-    # Game results (correlated with rating difference)
     rating_diff = white_elo - black_elo
-    white_win_prob = 1 / (1 + 10 ** (-rating_diff / 400))  # Elo formula
+    white_win_prob = 1 / (1 + 10 ** (-rating_diff / 400))
     rand = np.random.random(n_games)
     results = []
-    for i, (prob, r) in enumerate(zip(white_win_prob, rand)):
-        if r < prob * 0.9:  # White wins (with some draws)
+    for prob, r in zip(white_win_prob, rand):
+        if r < prob * 0.9:
             results.append("1-0")
-        elif r < prob * 0.9 + 0.1:  # Draw
+        elif r < prob * 0.9 + 0.1:
             results.append("1/2-1/2")
-        else:  # Black wins
+        else:
             results.append("0-1")
 
-    # Number of moves (correlated with result - decisive games tend to be shorter)
     num_moves = np.random.normal(70, 25, n_games).clip(20, 200).astype(int)
-
-    # Opening ECO codes
-    eco_codes = [
-        "A00",
-        "B00",
-        "B20",
-        "B50",
-        "C00",
-        "C20",
-        "C50",
-        "D00",
-        "D30",
-        "E00",
-        "E60",
-    ]
+    eco_codes = ["A00", "B00", "B20", "B50", "C00", "C20", "C50", "D00", "D30", "E00", "E60"]
     opening_eco = np.random.choice(eco_codes, n_games)
 
-    # Create base DataFrame
     games_df = pd.DataFrame(
         {
             "white_player": white_player,
@@ -261,17 +220,14 @@ def generate_synthetic_dataset(
     return games_df
 
 
+# ---------------------------------------------------------------------------
+# Full pipeline
+# ---------------------------------------------------------------------------
+
 def run_full_pipeline(
     n_games: int = SAMPLE_SIZE, use_real_data: bool = True, force_reload: bool = False
 ):
-    """
-    Run the complete ChessInsight analysis pipeline.
-
-    Args:
-        n_games: Number of games to analyze
-        use_real_data: If True, load from PGN file; if False, use synthetic data
-        force_reload: Force re-parsing of PGN file (ignore cache)
-    """
+    """Run the complete ChessInsight analysis pipeline."""
     print("=" * 70)
     print("CHESSINSIGHT - FULL ANALYSIS PIPELINE")
     print("Team 029 - CSE6242 Spring 2026")
@@ -282,7 +238,7 @@ def run_full_pipeline(
     print("STEP 1: Data Loading")
     print("=" * 70)
 
-    full_games_df = None  # Will be set if using real data
+    full_games_df = None
 
     if use_real_data:
         print(f"Loading real data from {PGN_FILE_PATH}")
@@ -293,7 +249,7 @@ def run_full_pipeline(
         print("Using synthetic data (fallback mode)")
         games_df = generate_synthetic_dataset(n_games=n_games)
 
-    # Save raw games
+    # Save raw games snapshot
     games_df.to_parquet(PROCESSED_DATA_DIR / "games_processed.parquet")
     print(f"Saved games to {PROCESSED_DATA_DIR / 'games_processed.parquet'}")
 
@@ -302,20 +258,15 @@ def run_full_pipeline(
     print("STEP 2: Feature Extraction")
     print("=" * 70)
 
-    # Pass full_games_df to use real clock/move data for feature extraction
     features_df = extract_features_from_dataframe(games_df, full_games=full_games_df)
-    print(
-        f"Extracted {len(features_df.columns)} features from {len(features_df)} games"
-    )
+    print(f"Extracted {len(features_df.columns)} features from {len(features_df)} games")
 
-    # Aggregate to player level
     player_features = aggregate_player_features(features_df, min_games=5)
     print(f"Aggregated features for {len(player_features)} players")
 
-    # Save features
     save_features(features_df, player_features)
 
-    # Step 3: Skill Classification
+    # Step 3: Skill Classification (multiple models)
     print("\n" + "=" * 70)
     print("STEP 3: Skill Tier Classification")
     print("=" * 70)
@@ -323,9 +274,34 @@ def run_full_pipeline(
     X, y = prepare_classification_data(features_df, target_color="white")
     print(f"Classification data: {len(X)} samples, {len(X.columns)} features")
 
-    classification_results = train_classifier(X, y, model_type="random_forest")
-    print_results_summary(classification_results)
-    save_model(classification_results)
+    model_types = ["random_forest", "xgboost", "gradient_boosting", "ensemble_soft"]
+    results_by_type: dict = {}
+
+    best_type = None
+    best_test_acc = -1.0
+
+    for m_type in model_types:
+        print("\n" + "-" * 60)
+        print(f"Training model: {m_type}")
+        results = train_classifier(X, y, model_type=m_type)
+        print_results_summary(results)
+
+        # Save under type-specific name
+        save_model(results, model_name=f"skill_classifier_{m_type}")
+
+        results_by_type[m_type] = results
+        if results["metrics"]["test_accuracy"] > best_test_acc:
+            best_test_acc = results["metrics"]["test_accuracy"]
+            best_type = m_type
+
+    # Use the best-performing model as the canonical classifier
+    assert best_type is not None
+    classification_results = results_by_type[best_type]
+    print("\n" + "-" * 60)
+    print(f"Best-performing model based on test accuracy: {best_type}")
+
+    # Also save it under the generic skill_classifier name for dashboards
+    save_model(classification_results, model_name="skill_classifier")
 
     # Step 4: Behavioral Clustering
     print("\n" + "=" * 70)
@@ -335,15 +311,13 @@ def run_full_pipeline(
     X_cluster, feature_cols = prepare_clustering_data(player_features)
     print(f"Clustering data: {len(X_cluster)} players, {len(feature_cols)} features")
 
-    # Evaluate k in [3, 5] but use 4 clusters for improved interpretability
     k_results = find_optimal_k(X_cluster.values, k_range=(3, 5))
     optimal_k = 4
     print(
         f"Using n_clusters={optimal_k} for primary behavioral clustering "
-        "based on t-SNE inspection and internal metrics."
+        "based on embedding inspection and internal metrics."
     )
 
-    # Compare multiple clustering methods at k = 4 and save comparison
     print("\nEvaluating alternative clustering methods on the same features (k = 4)...")
     method_comparison_df = compare_clustering_methods(X_cluster, n_clusters=optimal_k)
     comparison_path = MODELS_DIR / "clustering_method_comparison.csv"
@@ -352,11 +326,9 @@ def run_full_pipeline(
     if not method_comparison_df.empty:
         print(method_comparison_df.to_string(index=False))
 
-    # Select primary clustering method based on silhouette (then Davies–Bouldin)
     if not method_comparison_df.empty:
         method_sorted = method_comparison_df.sort_values(
-            ["silhouette_score", "davies_bouldin_index"],
-            ascending=[False, True],
+            ["silhouette_score", "davies_bouldin_index"], ascending=[False, True]
         )
         best_method = method_sorted.iloc[0]["method"]
     else:
@@ -364,12 +336,8 @@ def run_full_pipeline(
 
     print(f"\nSelected primary clustering method: {best_method} (k = {optimal_k})")
 
-    # Perform primary clustering with the selected method
-    clustering_results = perform_clustering(
-        X_cluster, n_clusters=optimal_k, method=best_method
-    )
+    clustering_results = perform_clustering(X_cluster, n_clusters=optimal_k, method=best_method)
 
-    # Analyze and name clusters for the primary model
     cluster_stats = analyze_clusters(
         player_features, clustering_results["labels"], feature_cols
     )
@@ -387,10 +355,8 @@ def run_full_pipeline(
     print("STEP 5: Generating Visualizations")
     print("=" * 70)
 
-    # Create dashboard wireframe
     create_dashboard_wireframe()
 
-    # Generate all visualizations
     generate_all_visualizations(
         features_df,
         player_features,
@@ -405,11 +371,9 @@ def run_full_pipeline(
     print("ANALYSIS COMPLETE - SUMMARY")
     print("=" * 70)
 
-    # Determine data source description
-    if use_real_data:
-        data_source = f"Lichess Database ({PGN_FILE_PATH.name})"
-    else:
-        data_source = "Synthetic data"
+    data_source = (
+        f"Lichess Database ({PGN_FILE_PATH.name})" if use_real_data else "Synthetic data"
+    )
 
     summary = {
         "dataset": {
@@ -438,13 +402,11 @@ def run_full_pipeline(
         },
     }
 
-    # Save summary
     summary_path = MODELS_DIR / "analysis_summary.json"
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=2)
     print(f"\nSaved analysis summary to {summary_path}")
 
-    # Print summary
     print("\n" + "-" * 50)
     print("DATASET STATISTICS:")
     print(f"  Total games: {summary['dataset']['total_games']:,}")
@@ -460,7 +422,7 @@ def run_full_pipeline(
     print(f"  Method: {summary['clustering']['method']}")
     print(f"  Clusters: {summary['clustering']['n_clusters']}")
     print(f"  Silhouette Score: {summary['clustering']['silhouette_score']}")
-    print(f"  Identified Archetypes:")
+    print("  Identified Clusters:")
     for cluster_id, name in summary["clustering"]["archetypes"].items():
         print(f"    - {name}")
 
@@ -499,7 +461,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Run with real data from data_1m_games.pgn by default
     summary = run_full_pipeline(
         n_games=args.n_games,
         use_real_data=not args.synthetic,
