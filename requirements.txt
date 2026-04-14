@@ -33,3 +33,8 @@ ipykernel>=6.25.0
 
 # Utilities
 python-dotenv>=1.0.0
+
+# Dash and Streamlit dashboards
+dash>=2.16.0
+dash-bootstrap-components>=1.6.0
+streamlit>=1.32.0
