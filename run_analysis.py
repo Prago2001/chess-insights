@@ -5,7 +5,7 @@ Team 029 - CSE6242 Spring 2026
 This script runs the complete analysis pipeline:
 1. Generate/load game data
 2. Extract features
-3. Train skill classifiers (RF, XGB, GB, Ensemble)
+3. Train skill classifiers (RF, XGB, Ensemble)
 4. Perform clustering
 5. Generate visualizations
 6. Output results summary
@@ -274,7 +274,7 @@ def run_full_pipeline(
     X, y = prepare_classification_data(features_df, target_color="white")
     print(f"Classification data: {len(X)} samples, {len(X.columns)} features")
 
-    model_types = ["random_forest", "xgboost", "gradient_boosting", "ensemble_soft"]
+    model_types = ["random_forest", "xgboost", "ensemble_soft"]
     results_by_type: dict = {}
 
     best_type = None
