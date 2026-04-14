@@ -39,6 +39,7 @@ INSTALLATION
    - scikit-learn, xgboost (machine learning)
    - matplotlib, seaborn, plotly (visualization)
    - tqdm (progress bars)
+   - dash, dash-bootstrap-components, streamlit (interactive dashboards)
 
 4. IMPORTANT - Download the dataset:
    The data file is NOT included due to its large size (2.2 GB).
@@ -85,7 +86,7 @@ Output Files:
    visualizations/     - Generated charts (PNG files)
 
 Expected runtime:
-   - First run (parsing PGN): Varies based on n_games and system specs
+   - First run (parsing PGN): Varies based on n-games and system specs
    - Subsequent runs (cached): Significantly faster due to parquet caching
 
 
@@ -149,6 +150,25 @@ Expected fields per game:
 - Move sequence with clock times [%clk H:MM:SS]
 
 Validation: Games without required fields are automatically filtered.
+
+
+STREAMLIT DASHBOARD
+-------------------
+After running the analysis pipeline at least once (to materialize processed
+parquet files and model artifacts), you can launch the main interactive
+dashboard implemented in Streamlit:
+
+   streamlit run streamlit_app.py
+
+By default this will open a browser window at http://localhost:8501 where you
+can explore the Overview, Player Cluster Map, Time Analysis, Classification,
+and Cluster Analysis tabs powered by the trained models.
+
+For the earlier Dash-based prototype dashboard, you can still run:
+
+   python dashboard.py
+
+which will serve the app at http://127.0.0.1:8050.
 
 
 CONTACT
