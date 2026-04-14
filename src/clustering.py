@@ -16,6 +16,7 @@ from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bo
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.mixture import GaussianMixture
+import umap
 
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
@@ -105,7 +106,7 @@ def perform_clustering(X: pd.DataFrame,
         X: Feature matrix (DataFrame)
         n_clusters: Number of clusters
         method: Clustering method ('kmeans', 'hierarchical', 'dbscan', 'gmm', 'birch')
-        compute_embedding: Whether to compute a 2D t-SNE embedding (expensive)
+        compute_embedding: Whether to compute a 2D embedding (expensive)
 
     Returns:
         Dictionary with clustering results
@@ -166,13 +167,31 @@ def perform_clustering(X: pd.DataFrame,
     print(f"  Calinski-Harabasz Index: {calinski:.1f}")
     print(f"  Davies-Bouldin Index: {davies:.4f}")
 
-    # Get 2D embedding for visualization using t-SNE (per proposal)
+    # Get 2D embedding for visualization using UMAP (with t-SNE fallback)
     embedding_2d = None
+    embedding_method: Optional[str] = None
     if compute_embedding:
-        print("Computing t-SNE embedding for visualization...")
-        tsne = TSNE(n_components=2, random_state=RANDOM_STATE, perplexity=min(30, len(X_pca) - 1))
-        embedding_2d = tsne.fit_transform(X_pca)
-        print("t-SNE embedding complete")
+        try:
+            print("Computing UMAP embedding for visualization...")
+            reducer = umap.UMAP(
+                n_components=2,
+                random_state=RANDOM_STATE,
+                n_neighbors=30,
+                min_dist=0.1,
+            )
+            embedding_2d = reducer.fit_transform(X_pca)
+            embedding_method = 'umap'
+            print("UMAP embedding complete")
+        except Exception as e:
+            print(f"UMAP failed ({e}); falling back to t-SNE")
+            tsne = TSNE(
+                n_components=2,
+                random_state=RANDOM_STATE,
+                perplexity=min(30, len(X_pca) - 1),
+            )
+            embedding_2d = tsne.fit_transform(X_pca)
+            embedding_method = 'tsne'
+            print("t-SNE embedding complete")
 
     results = {
         'model': model,
@@ -190,7 +209,7 @@ def perform_clustering(X: pd.DataFrame,
             'pca_explained_variance': explained_variance
         },
         'embedding_2d': embedding_2d,
-        'embedding_method': 'tsne' if compute_embedding else None,
+        'embedding_method': embedding_method,
         'X_scaled': X_scaled,
         'X_pca': X_pca
     }
@@ -282,145 +301,42 @@ def name_clusters(cluster_stats: pd.DataFrame,
                   player_features: pd.DataFrame,
                   labels: np.ndarray) -> Dict[int, Dict]:
     """
-    Automatically name clusters based on their characteristics.
-
-    Args:
-        cluster_stats: DataFrame with cluster statistics
-        player_features: Original player features
-        labels: Cluster labels
-
-    Returns:
-        Dictionary mapping cluster ID to name and description. Names are
-        guaranteed to be unique across clusters by incorporating skill tier
-        and Elo-level qualifiers when needed.
+    Name clusters numerically (Cluster 1, Cluster 2, ...) with a concise description.
     """
     df = player_features.copy()
     df['cluster'] = labels
 
     cluster_names: Dict[int, Dict] = {}
 
-    # Pre-compute Elo buckets so we can add semantic qualifiers
-    elo_q1 = df['avg_elo'].quantile(0.25) if 'avg_elo' in df.columns else None
-    elo_q3 = df['avg_elo'].quantile(0.75) if 'avg_elo' in df.columns else None
-
-    used_names = set()
-
-    # Define naming criteria based on feature patterns
     for _, row in cluster_stats.iterrows():
-        cluster_id = int(row['cluster'])
-        cluster_data = df[df['cluster'] == cluster_id]
+        cid = int(row['cluster'])
+        cluster_data = df[df['cluster'] == cid]
 
-        # Analyze characteristics
-        characteristics: List[str] = []
-        base_name = f"Cluster {cluster_id}"
-        description = ""
+        size = int(row['size'])
+        avg_elo = float(row['avg_elo']) if pd.notna(row['avg_elo']) else None
 
-        # Check time management patterns
-        time_cols = [c for c in cluster_data.columns if 'time' in c.lower() and 'mean' in c]
-        if time_cols:
-            avg_time = cluster_data[time_cols].mean().mean()
-            overall_avg = df[time_cols].mean().mean()
+        dominant_tier = None
+        if 'skill_tier' in cluster_data.columns and not cluster_data.empty:
+            dominant = cluster_data['skill_tier'].mode()
+            if not dominant.empty:
+                dominant_tier = dominant.iat[0]
 
-            if avg_time < overall_avg * 0.7:
-                characteristics.append("fast")
-            elif avg_time > overall_avg * 1.3:
-                characteristics.append("deliberate")
+        name = f"Cluster {cid + 1}"
 
-        # Check accuracy patterns
-        blunder_cols = [c for c in cluster_data.columns if 'blunder' in c.lower()]
-        if blunder_cols:
-            avg_blunder = cluster_data[blunder_cols].mean().mean()
-            overall_avg_blunder = df[blunder_cols].mean().mean()
+        desc_bits = [f"{size} players"]
+        if avg_elo is not None:
+            desc_bits.append(f"avg Elo ≈ {avg_elo:.0f}")
+        if dominant_tier is not None:
+            desc_bits.append(f"dominant tier {dominant_tier}")
 
-            if avg_blunder < overall_avg_blunder * 0.7:
-                characteristics.append("accurate")
-            elif avg_blunder > overall_avg_blunder * 1.3:
-                characteristics.append("tactical")
+        description = "Cluster of players with " + ", ".join(desc_bits) + "."
 
-        # Check time trouble frequency
-        trouble_cols = [c for c in cluster_data.columns if 'trouble' in c.lower() or 'low_time' in c.lower()]
-        if trouble_cols:
-            avg_trouble = cluster_data[trouble_cols].mean().mean()
-            overall_avg_trouble = df[trouble_cols].mean().mean()
-
-            if avg_trouble > overall_avg_trouble * 1.5:
-                characteristics.append("time-scrambler")
-
-        # Check skill distribution
-        dominant_tier_label: Optional[str] = None
-        if 'skill_tier' in cluster_data.columns:
-            dominant_tier = cluster_data['skill_tier'].mode()
-            if len(dominant_tier) > 0:
-                dominant_tier_label = dominant_tier.iloc[0]
-                characteristics.append(dominant_tier_label.lower())
-
-        # Generate archetype name based on characteristics
-        archetype_names = {
-            ('fast', 'accurate'): ('Speed Demon', 'Fast, accurate players who maintain quality under time pressure'),
-            ('fast', 'tactical'): ('Blitz Attacker', 'Aggressive players who play quickly but make tactical errors'),
-            ('deliberate', 'accurate'): ('Positional Grinder', 'Careful, methodical players who take their time'),
-            ('deliberate', 'tactical'): ('Deep Thinker', 'Players who think long but still make mistakes'),
-            ('time-scrambler',): ('Time Scrambler', 'Players who frequently get into time trouble'),
-            ('accurate',): ('Steady Hand', 'Consistent players with low error rates'),
-            ('tactical',): ('Risk Taker', 'Players who make more mistakes but play aggressively'),
-        }
-
-        # Use up to two behavioral traits (ignoring skill tiers for archetype key)
-        behavior_traits = [t for t in characteristics if t not in ['beginner', 'intermediate', 'advanced', 'expert']]
-        char_tuple = tuple(behavior_traits[:2]) if len(behavior_traits) >= 1 else tuple()
-
-        if char_tuple in archetype_names:
-            base_name, description = archetype_names[char_tuple]
-        elif len(behavior_traits) > 0:
-            base_name = f"{behavior_traits[0].title()} Player"
-            description = f"Players characterized by {', '.join(behavior_traits)} play style"
-        else:
-            base_name = f"Archetype {cluster_id + 1}"
-            description = "Distinct player group with unique behavioral patterns"
-
-        # Add Elo-based qualifier
-        elo_label: Optional[str] = None
-        if elo_q1 is not None and elo_q3 is not None and pd.notna(row['avg_elo']):
-            if row['avg_elo'] >= elo_q3:
-                elo_label = "Elite"
-            elif row['avg_elo'] <= elo_q1:
-                elo_label = "Developing"
-
-        # Build final name with skill tier and Elo qualifiers
-        qualifiers: List[str] = []
-        if dominant_tier_label is not None:
-            qualifiers.append(dominant_tier_label)
-        if elo_label is not None:
-            qualifiers.append(elo_label)
-
-        full_name = f"{' '.join(qualifiers)} {base_name}".strip() if qualifiers else base_name
-
-        # Ensure uniqueness across clusters
-        if full_name in used_names:
-            suffix = 2
-            candidate = f"{full_name} #{suffix}"
-            while candidate in used_names:
-                suffix += 1
-                candidate = f"{full_name} #{suffix}"
-            full_name = candidate
-
-        used_names.add(full_name)
-
-        # Enrich description with qualifiers
-        qualifier_phrases = []
-        if dominant_tier_label is not None:
-            qualifier_phrases.append(f"dominant skill tier {dominant_tier_label}")
-        if elo_label is not None:
-            qualifier_phrases.append(f"{elo_label.lower()} Elo range")
-        if qualifier_phrases:
-            description = f"{description} (typically {', '.join(qualifier_phrases)})."
-
-        cluster_names[cluster_id] = {
-            'name': full_name,
+        cluster_names[cid] = {
+            'name': name,
             'description': description,
-            'characteristics': characteristics,
-            'size': int(row['size']),
-            'avg_elo': float(row['avg_elo']) if pd.notna(row['avg_elo']) else None
+            'characteristics': [],
+            'size': size,
+            'avg_elo': avg_elo,
         }
 
     return cluster_names
@@ -491,11 +407,11 @@ def print_clustering_summary(cluster_stats: pd.DataFrame,
     print(f"  Calinski-Harabasz Index: {metrics['calinski_harabasz_index']:.1f}")
     print(f"  Davies-Bouldin Index: {metrics['davies_bouldin_index']:.4f}")
 
-    print(f"\nIdentified {len(cluster_names)} Player Archetypes:")
+    print(f"\nIdentified {len(cluster_names)} Clusters:")
     print("-" * 60)
 
     for cluster_id, info in sorted(cluster_names.items()):
-        print(f"\n  Cluster {cluster_id}: {info['name']}")
+        print(f"\n  Cluster {cluster_id + 1}: {info['name']}")
         print(f"    Size: {info['size']} players")
         if info['avg_elo']:
             print(f"    Avg Elo: {info['avg_elo']:.0f}")
@@ -524,12 +440,10 @@ if __name__ == "__main__":
         optimal_k = 4
         print(
             f"Using n_clusters={optimal_k} for behavioral clustering "
-            "based on t-SNE inspection and internal metrics."
+            "based on embedding inspection and internal metrics."
         )
 
         # Compare multiple clustering methods and save comparison
-        from pathlib import Path as _Path
-
         print("\nEvaluating alternative clustering methods on the same features (k = 4)...")
         method_comparison_df = compare_clustering_methods(X, n_clusters=optimal_k)
         comparison_path = MODELS_DIR / "clustering_method_comparison.csv"
@@ -556,7 +470,7 @@ if __name__ == "__main__":
         # Analyze clusters
         cluster_stats = analyze_clusters(player_features, results['labels'], feature_cols)
 
-        # Name clusters
+        # Name clusters numerically
         cluster_names = name_clusters(cluster_stats, player_features, results['labels'])
 
         # Print summary
