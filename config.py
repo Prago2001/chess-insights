@@ -21,7 +21,7 @@ for dir_path in [RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR, VIZ_DIR]:
 # Data settings
 PGN_FILE_PATH = RAW_DATA_DIR / "data_1m_games.pgn"  # Path to the 1M games PGN file
 MIN_GAMES_PER_PLAYER = 20  # Minimum games for player-level analysis
-SAMPLE_SIZE = 1000000  # Process 200k games - substantial sample from 1M game dataset
+SAMPLE_SIZE = 1000000  # Process up to 1M games from the PGN file
 
 # Skill tier definitions (Elo ranges) - Per proposal: 4 tiers
 SKILL_TIERS = {
@@ -47,7 +47,10 @@ TEST_SIZE = 0.15
 VAL_SIZE = 0.15
 N_CLUSTERS_RANGE = (3, 5)  # Range to search for optimal k
 
-# Feature categories
+# ---------------------------------------------------------------------------
+# Feature categories (canonical groups used across the project)
+# ---------------------------------------------------------------------------
+# Base time-usage features per color
 TIME_FEATURES = [
     "avg_time_opening",
     "avg_time_middlegame",
@@ -57,23 +60,51 @@ TIME_FEATURES = [
     "time_variance_endgame",
     "low_time_move_ratio",
     "time_trouble_frequency",
+    # Engineered time-usage features
+    "time_opening_frac",
+    "time_middlegame_frac",
+    "time_endgame_frac",
+    "opening_vs_endgame_time_ratio",
+    "time_variance_total",
+    "low_time_to_trouble_ratio",
+    "time_per_complexity_opening",
+    "time_per_complexity_middlegame",
+    "time_per_complexity_endgame",
 ]
 
+# Base accuracy/error features per color
 ACCURACY_FEATURES = [
     "blunder_rate",
     "mistake_rate",
     "avg_centipawn_loss",
     "accuracy_percentage",
+    # Engineered phase-normalized/normalized error features
+    "blunders_per_40_moves",
+    "mistakes_per_40_moves",
+    "blunder_rate_opening",
+    "blunder_rate_middlegame",
+    "blunder_rate_endgame",
+    "accuracy_opening",
+    "accuracy_middlegame",
+    "accuracy_endgame",
 ]
 
+# Complexity features (global)
 COMPLEXITY_FEATURES = [
     "avg_position_complexity",
     "material_imbalance_freq",
     "piece_activity_score",
 ]
 
-OPENING_FEATURES = ["opening_aggression_score", "book_deviation_move"]
+# Opening features (global and repertoire-level)
+OPENING_FEATURES = [
+    "opening_aggression_score",
+    "book_deviation_move",
+    "num_unique_openings",
+    "opening_entropy",
+]
 
+# Aggregated list used by some modules when constructing feature matrices
 ALL_FEATURES = (
     TIME_FEATURES + ACCURACY_FEATURES + COMPLEXITY_FEATURES + OPENING_FEATURES
 )
