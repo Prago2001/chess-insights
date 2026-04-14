@@ -18,6 +18,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from sklearn.cluster import KMeans
 
 from config import PROCESSED_DATA_DIR, MODELS_DIR
 
@@ -224,7 +225,7 @@ def render_overview_tab():
 
 
 # ---------------------------------------------------------------------------
-# Player Cluster Map Tab (with per-player drill-down)
+# Player Cluster Map Tab (with per-player drill-down and k slider)
 # ---------------------------------------------------------------------------
 def render_cluster_tab():
     st.subheader("Player Cluster Map")
@@ -234,7 +235,7 @@ def render_cluster_tab():
     with col_controls:
         color_by = st.radio(
             "Color By",
-            options=["Cluster Archetype", "Skill Tier"],
+            options=["Cluster (k slider)", "Skill Tier"],
             index=0,
         )
 
@@ -255,13 +256,21 @@ def render_cluster_tab():
             step=50,
         )
 
-        st.markdown("**Cluster Summary**")
+        k_viz = st.slider(
+            "Number of clusters for visualization (k)",
+            min_value=3,
+            max_value=8,
+            value=clustering_results.get("n_clusters", 4),
+            step=1,
+        )
+
+        st.markdown("**Cluster Summary (from pipeline)**")
         summary_rows = []
         for cid in sorted(cluster_name_map.keys()):
             info = clustering_results["cluster_names"][str(cid)]
             summary_rows.append(
                 {
-                    "Archetype": info["name"],
+                    "Cluster": info["name"],
                     "Size": info["size"],
                     "Avg Elo": round(info["avg_elo"]),
                 }
@@ -282,7 +291,7 @@ def render_cluster_tab():
                 selected_player = matches.iloc[0]
                 st.markdown(
                     f"**Selected player:** `{player_query}`  |  Elo: {selected_player['avg_elo']:.0f}  "
-                    f"|  Tier: {selected_player['skill_tier']}  |  Archetype: {selected_player['cluster_name']}"
+                    f"|  Tier: {selected_player['skill_tier']}  |  Cluster: {selected_player['cluster_name']}"
                 )
                 st.markdown(
                     f"Games analyzed: **{int(selected_player.get('num_games', 0))}**"
@@ -293,10 +302,21 @@ def render_cluster_tab():
             st.caption("Tip: paste a handle from the scatterplot tooltip to inspect a player.")
 
     with col_plot:
-        df = player_df[
-            (player_df["skill_tier"].isin(tiers_selected))
-            & (player_df["avg_elo"] >= rating_min)
-            & (player_df["avg_elo"] <= rating_max)
+        # Compute k-means on 2D embedding for interactive visualization
+        coords = player_df[["x", "y"]].values
+        kmeans = KMeans(n_clusters=k_viz, random_state=42, n_init=10)
+        viz_labels_all = kmeans.fit_predict(coords)
+
+        player_viz = player_df.copy()
+        player_viz["viz_cluster"] = viz_labels_all
+        player_viz["viz_cluster_name"] = [
+            f"Cluster {c + 1}" for c in player_viz["viz_cluster"]
+        ]
+
+        df = player_viz[
+            (player_viz["skill_tier"].isin(tiers_selected))
+            & (player_viz["avg_elo"] >= rating_min)
+            & (player_viz["avg_elo"] <= rating_max)
         ].copy()
 
         if color_by == "Skill Tier":
@@ -309,8 +329,8 @@ def render_cluster_tab():
                 hover_data=["player", "avg_elo", "num_games", "cluster_name"],
                 title=f"Player Embedding Map — {len(df):,} players",
                 labels={
-                    "x": "t-SNE Dim 1",
-                    "y": "t-SNE Dim 2",
+                    "x": "Embedding Dim 1",
+                    "y": "Embedding Dim 2",
                     "skill_tier": "Skill Tier",
                 },
                 category_orders={"skill_tier": SKILL_TIERS},
@@ -320,14 +340,14 @@ def render_cluster_tab():
                 df,
                 x="x",
                 y="y",
-                color="cluster_name",
+                color="viz_cluster_name",
                 color_discrete_sequence=CLUSTER_COLORS,
                 hover_data=["player", "avg_elo", "num_games", "skill_tier"],
-                title=f"Player Embedding Map — {len(df):,} players",
+                title=f"Player Embedding Map — k = {k_viz}",
                 labels={
-                    "x": "t-SNE Dim 1",
-                    "y": "t-SNE Dim 2",
-                    "cluster_name": "Archetype",
+                    "x": "Embedding Dim 1",
+                    "y": "Embedding Dim 2",
+                    "viz_cluster_name": "Cluster",
                 },
             )
 
@@ -350,7 +370,10 @@ def render_cluster_tab():
                 )
             )
 
-        fig.update_traces(marker=dict(size=4, opacity=0.6, line=dict(width=0)), selector=dict(mode="markers"))
+        fig.update_traces(
+            marker=dict(size=4, opacity=0.6, line=dict(width=0)),
+            selector=dict(mode="markers"),
+        )
         fig.update_layout(
             margin=dict(l=10, r=10, t=60, b=10),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -548,14 +571,14 @@ def render_classification_tab():
 # Cluster Analysis Tab
 # ---------------------------------------------------------------------------
 def render_cluster_analysis_tab():
-    st.subheader("Behavioral Archetypes and Clustering Quality")
+    st.subheader("Behavioral Clusters and Quality Metrics")
 
     # Cluster size pie chart
     clu_sizes = []
     for cid, info in clustering_results["cluster_names"].items():
         clu_sizes.append(
             {
-                "Archetype": info["name"],
+                "Cluster": info["name"],
                 "Size": info["size"],
                 "Avg Elo": round(info["avg_elo"]),
             }
@@ -564,7 +587,7 @@ def render_cluster_analysis_tab():
     fig_pie = px.pie(
         clu_df,
         values="Size",
-        names="Archetype",
+        names="Cluster",
         title="Cluster Size Distribution",
         color_discrete_sequence=CLUSTER_COLORS,
         hole=0.35,
@@ -575,7 +598,7 @@ def render_cluster_analysis_tab():
     comp_data = []
     for _, row in cluster_stats.iterrows():
         cid = int(row["cluster"])
-        name = cluster_name_map.get(cid, f"Cluster {cid}")
+        name = cluster_name_map.get(cid, f"Cluster {cid + 1}")
         for tier in SKILL_TIERS:
             col = f"pct_{tier.lower()}"
             if col in row:
@@ -601,9 +624,9 @@ def render_cluster_analysis_tab():
     # Avg Elo by cluster
     fig_elo = px.bar(
         clu_df,
-        x="Archetype",
+        x="Cluster",
         y="Avg Elo",
-        color="Archetype",
+        color="Cluster",
         color_discrete_sequence=CLUSTER_COLORS,
         title="Average Elo by Cluster",
     )
@@ -645,7 +668,7 @@ def render_cluster_analysis_tab():
         primary_method = clustering_results.get("method", "kmeans")
         primary_k = clustering_results.get("n_clusters", len(cluster_name_map))
         st.markdown(
-            f"- Primary clustering: **{primary_method}** with **k = {primary_k}** as used in the dashboard."
+            f"- Primary clustering: **{primary_method}** with **k = {primary_k}** as used in the pipeline."
         )
         st.markdown(
             "- Alternative methods in the table may achieve better internal metrics "
@@ -778,7 +801,7 @@ def main():
         2. Start the app with `streamlit run streamlit_app.py`.
         3. Use the tabs above to explore:
            - High-level dataset and model KPIs
-           - Player behavior map and archetypes
+           - Player behavior map with adjustable k
            - Time management patterns across skill tiers
            - Classification performance and feature importances
            - Cluster compositions and method quality
