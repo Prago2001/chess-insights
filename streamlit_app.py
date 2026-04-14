@@ -62,12 +62,6 @@ def load_game_features() -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def load_games_processed() -> pd.DataFrame:
-    """Load game-level data used for opening pattern analysis."""
-    return pd.read_parquet(PROCESSED_DATA_DIR / "games_processed.parquet")
-
-
-@st.cache_data(show_spinner=False)
 def load_json(name: str) -> dict:
     with open(MODELS_DIR / name) as f:
         return json.load(f)
@@ -159,7 +153,7 @@ def render_kpi(label: str, value: str, help_text: Optional[str] = None):
 
 
 # ---------------------------------------------------------------------------
-# Overview Tab
+# Tab 1 – Overview
 # ---------------------------------------------------------------------------
 def render_overview_tab(k_selected: int):
     st.subheader("Overview")
@@ -232,7 +226,7 @@ def render_overview_tab(k_selected: int):
 
 
 # ---------------------------------------------------------------------------
-# Player Cluster Map Tab (with per-player drill-down and local k slider)
+# Tab 2 – Player Cluster Map (with local k slider and per-player drill-down)
 # ---------------------------------------------------------------------------
 def render_cluster_tab(k_selected: int):
     st.subheader("Player Cluster Map")
@@ -248,7 +242,7 @@ def render_cluster_tab(k_selected: int):
         help="Adjusts the number of clusters used in this Player Cluster Map view.",
     )
 
-    # Compute k-means on 2D embedding for interactive visualization (shared across controls/plot)
+    # Compute k-means on 2D embedding for visualization
     coords = player_df[["x", "y"]].values
     kmeans = KMeans(n_clusters=k_tab, random_state=42, n_init=10)
     viz_labels_all = kmeans.fit_predict(coords)
@@ -292,7 +286,9 @@ def render_cluster_tab(k_selected: int):
             .reset_index()
         )
         summary_df["AvgElo"] = summary_df["AvgElo"].round(0).astype(int)
-        summary_df.rename(columns={"viz_cluster_name": "Cluster", "AvgElo": "Avg Elo"}, inplace=True)
+        summary_df.rename(
+            columns={"viz_cluster_name": "Cluster", "AvgElo": "Avg Elo"}, inplace=True
+        )
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
         st.markdown("**Player Drill-Down**")
@@ -307,8 +303,9 @@ def render_cluster_tab(k_selected: int):
             if not matches.empty:
                 selected_player = matches.iloc[0]
                 st.markdown(
-                    f"**Selected player:** `{player_query}`  |  Elo: {selected_player['avg_elo']:.0f}  "
-                    f"|  Tier: {selected_player['skill_tier']}  |  Cluster (k={k_tab}): {selected_player['viz_cluster_name']}"
+                    f"**Selected:** `{player_query}`  |  Elo: {selected_player['avg_elo']:.0f}"
+                    f"  |  Tier: {selected_player['skill_tier']}"
+                    f"  |  {selected_player['viz_cluster_name']}"
                 )
                 st.markdown(
                     f"Games analyzed: **{int(selected_player.get('num_games', 0))}**"
@@ -319,7 +316,7 @@ def render_cluster_tab(k_selected: int):
             st.caption("Tip: paste a handle from the scatterplot tooltip to inspect a player.")
 
     with col_plot:
-        df = player_viz[
+        df_filtered = player_viz[
             (player_viz["skill_tier"].isin(tiers_selected))
             & (player_viz["avg_elo"] >= rating_min)
             & (player_viz["avg_elo"] <= rating_max)
@@ -327,13 +324,13 @@ def render_cluster_tab(k_selected: int):
 
         if color_by == "Skill Tier":
             fig = px.scatter(
-                df,
+                df_filtered,
                 x="x",
                 y="y",
                 color="skill_tier",
                 color_discrete_map=TIER_COLORS,
                 hover_data=["player", "avg_elo", "num_games", "viz_cluster_name"],
-                title=f"Player Embedding Map — {len(df):,} players",
+                title=f"Player Embedding Map — {len(df_filtered):,} players",
                 labels={
                     "x": "Embedding Dim 1",
                     "y": "Embedding Dim 2",
@@ -343,7 +340,7 @@ def render_cluster_tab(k_selected: int):
             )
         else:
             fig = px.scatter(
-                df,
+                df_filtered,
                 x="x",
                 y="y",
                 color="viz_cluster_name",
@@ -357,21 +354,21 @@ def render_cluster_tab(k_selected: int):
                 },
             )
 
-        # Highlight selected player if present
-        if "selected_player" in locals() and selected_player is not None:
+        # Highlight selected player if found
+        if selected_player is not None:
             fig.add_trace(
                 go.Scatter(
                     x=[selected_player["x"]],
                     y=[selected_player["y"]],
                     mode="markers",
                     marker=dict(
-                        size=12,
+                        size=14,
                         color="black",
                         symbol="x",
                         line=dict(width=2, color="white"),
                     ),
                     name="Selected Player",
-                    hovertext=[f"Selected: {selected_player['player']}`"],
+                    hovertext=[f"Selected: {selected_player['player']}"],
                     hoverinfo="text",
                 )
             )
@@ -388,6 +385,315 @@ def render_cluster_tab(k_selected: int):
 
 
 # ---------------------------------------------------------------------------
-# Time Analysis Tab
+# Tab 3 – Time Analysis
 # ---------------------------------------------------------------------------
-... (rest of file unchanged) ...
+def render_time_tab():
+    st.subheader("Time Analysis")
+
+    # Heatmap: avg time per move by tier and phase
+    fig_heatmap = go.Figure(
+        data=go.Heatmap(
+            z=time_heatmap_df.values,
+            x=time_heatmap_df.columns.tolist(),
+            y=time_heatmap_df.index.tolist(),
+            colorscale="YlOrRd",
+            text=time_heatmap_df.values.round(2),
+            texttemplate="%{text}s",
+            hovertemplate="Tier: %{y}<br>Phase: %{x}<br>Avg Time: %{z:.2f}s<extra></extra>",
+        )
+    )
+    fig_heatmap.update_layout(
+        title="Average Time per Move (seconds) by Skill Tier & Game Phase",
+        xaxis_title="Game Phase",
+        yaxis_title="Skill Tier",
+        height=380,
+    )
+
+    # Time variance by tier and phase (player-level aggregates)
+    tv_data = []
+    for phase, col in [
+        ("Opening", "time_variance_opening_mean"),
+        ("Middlegame", "time_variance_middlegame_mean"),
+        ("Endgame", "time_variance_endgame_mean"),
+    ]:
+        if col in player_df.columns:
+            for tier in SKILL_TIERS:
+                vals = player_df[player_df["skill_tier"] == tier][col]
+                tv_data.append({"Phase": phase, "Skill Tier": tier, "Time Variance": vals.mean()})
+    tv_df = pd.DataFrame(tv_data)
+    fig_variance = px.bar(
+        tv_df,
+        x="Phase",
+        y="Time Variance",
+        color="Skill Tier",
+        barmode="group",
+        color_discrete_map=TIER_COLORS,
+        title="Average Time Variance by Skill Tier & Game Phase",
+        category_orders={"Skill Tier": SKILL_TIERS},
+    )
+    fig_variance.update_layout(height=380)
+
+    # Time trouble frequency by tier
+    if "time_trouble_frequency_mean" in player_df.columns:
+        tt_data = []
+        for tier in SKILL_TIERS:
+            vals = player_df[player_df["skill_tier"] == tier]["time_trouble_frequency_mean"]
+            tt_data.append({"Skill Tier": tier, "Time Trouble Freq": vals.mean()})
+        tt_df = pd.DataFrame(tt_data)
+        fig_tt = px.bar(
+            tt_df,
+            x="Skill Tier",
+            y="Time Trouble Freq",
+            color="Skill Tier",
+            color_discrete_map=TIER_COLORS,
+            title="Average Time Trouble Frequency by Skill Tier",
+        )
+        fig_tt.update_layout(showlegend=False, height=370)
+    else:
+        fig_tt = go.Figure()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.plotly_chart(fig_heatmap, use_container_width=True)
+    with col2:
+        st.plotly_chart(fig_variance, use_container_width=True)
+
+    col3, col4 = st.columns(2)
+    with col3:
+        st.plotly_chart(fig_tt, use_container_width=True)
+    with col4:
+        st.markdown("### Key Time Insights")
+        st.markdown(
+            """
+- Beginners spend more time per move on average than higher-rated players.
+- Time variance in the opening is highest for beginners, suggesting inconsistent opening preparation.
+- Advanced and Expert players show more consistent time management across all phases.
+- Time trouble frequency decreases with increasing skill level.
+- Stronger players allocate time more deliberately in the middlegame, which is the most predictive phase for skill tier.
+"""
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tab 4 – Classification Results
+# ---------------------------------------------------------------------------
+def render_classification_tab():
+    st.subheader("Skill-Tier Classification")
+
+    # Normalized confusion matrix heatmap
+    cm_norm = cm_array.astype(float) / cm_array.sum(axis=1, keepdims=True)
+    fig_cm = go.Figure(
+        data=go.Heatmap(
+            z=cm_norm,
+            x=cm_labels,
+            y=cm_labels,
+            colorscale="Blues",
+            text=cm_array,
+            texttemplate="%{text}",
+            hovertemplate="True: %{y}<br>Predicted: %{x}<br>Count: %{text}<br>Rate: %{z:.2%}<extra></extra>",
+        )
+    )
+    fig_cm.update_layout(
+        title="Confusion Matrix (normalized by row)",
+        xaxis_title="Predicted Tier",
+        yaxis_title="Actual Tier",
+        height=450,
+    )
+
+    # Feature importance (top 15)
+    fi = feature_importance.head(15).copy()
+    fi["feature_clean"] = (
+        fi["feature"].str.replace("white_", "").str.replace("_", " ").str.title()
+    )
+    fig_fi = px.bar(
+        fi,
+        x="importance",
+        y="feature_clean",
+        orientation="h",
+        color="importance",
+        color_continuous_scale="Viridis",
+        title="Top 15 Feature Importances (Random Forest)",
+        labels={"importance": "Importance", "feature_clean": "Feature"},
+    )
+    fig_fi.update_layout(
+        yaxis=dict(autorange="reversed"), height=450, coloraxis_showscale=False
+    )
+
+    # Metrics summary card
+    m = classifier_metrics["metrics"]
+    metrics_data = {
+        "Metric": [
+            "Test Accuracy",
+            "Adjacent Accuracy (±1 tier)",
+            "Macro Precision",
+            "Macro Recall",
+            "Macro F1",
+            "Train / Val / Test",
+        ],
+        "Value": [
+            f"{m['test_accuracy']:.1%}",
+            f"{m['adjacent_accuracy']:.1%}",
+            f"{m['macro_precision']:.3f}",
+            f"{m['macro_recall']:.3f}",
+            f"{m['macro_f1']:.3f}",
+            f"{classifier_metrics['train_size']:,} / {classifier_metrics['val_size']:,} / {classifier_metrics['test_size']:,}",
+        ],
+    }
+    metrics_df = pd.DataFrame(metrics_data)
+
+    col1, col2 = st.columns([7, 5])
+    with col1:
+        st.plotly_chart(fig_cm, use_container_width=True)
+    with col2:
+        st.markdown("#### Classification Metrics")
+        st.dataframe(metrics_df, use_container_width=True, hide_index=True)
+        st.caption(
+            "Model: Random Forest (18 behavioral features). "
+            "Adjacent accuracy counts predictions within ±1 tier as correct."
+        )
+
+    st.plotly_chart(fig_fi, use_container_width=True)
+
+
+# ---------------------------------------------------------------------------
+# Tab 5 – Cluster Analysis
+# ---------------------------------------------------------------------------
+def render_cluster_analysis_tab():
+    st.subheader("Cluster Analysis")
+
+    # Cluster sizes and avg elo
+    clu_sizes = []
+    for cid, info in clustering_results["cluster_names"].items():
+        clu_sizes.append(
+            {"Archetype": info["name"], "Size": info["size"], "Avg Elo": round(info["avg_elo"])}
+        )
+    clu_df = pd.DataFrame(clu_sizes)
+
+    # Pie chart: cluster size distribution
+    fig_pie = px.pie(
+        clu_df,
+        values="Size",
+        names="Archetype",
+        title="Cluster Size Distribution",
+        color_discrete_sequence=CLUSTER_COLORS,
+        hole=0.35,
+    )
+    fig_pie.update_layout(height=400)
+
+    # Stacked bar: skill tier composition per cluster
+    comp_data = []
+    for _, row in cluster_stats.iterrows():
+        cid = int(row["cluster"])
+        name = cluster_name_map.get(cid, f"Cluster {cid}")
+        for tier in SKILL_TIERS:
+            col = f"pct_{tier.lower()}"
+            if col in row:
+                comp_data.append(
+                    {"Cluster": name, "Skill Tier": tier, "Percentage": row[col]}
+                )
+    comp_df = pd.DataFrame(comp_data)
+    fig_comp = px.bar(
+        comp_df,
+        x="Cluster",
+        y="Percentage",
+        color="Skill Tier",
+        color_discrete_map=TIER_COLORS,
+        barmode="stack",
+        title="Skill Tier Composition per Cluster",
+        category_orders={"Skill Tier": SKILL_TIERS},
+    )
+    fig_comp.update_layout(height=400)
+
+    # Bar chart: avg Elo by cluster
+    fig_elo = px.bar(
+        clu_df,
+        x="Archetype",
+        y="Avg Elo",
+        color="Archetype",
+        color_discrete_sequence=CLUSTER_COLORS,
+        title="Average Elo by Cluster",
+    )
+    fig_elo.update_layout(showlegend=False, height=370)
+
+    # Clustering method comparison table
+    mc = method_comparison.copy()
+    for col in ["silhouette_score", "calinski_harabasz_index", "davies_bouldin_index"]:
+        if col in mc.columns:
+            mc[col] = mc[col].round(3)
+    display_cols = [c for c in ["method", "n_clusters", "silhouette_score", "calinski_harabasz_index", "davies_bouldin_index"] if c in mc.columns]
+    mc_display = mc[display_cols].rename(
+        columns={
+            "method": "Method",
+            "n_clusters": "k",
+            "silhouette_score": "Silhouette ↑",
+            "calinski_harabasz_index": "CH ↑",
+            "davies_bouldin_index": "DB ↓",
+        }
+    )
+
+    col1, col2 = st.columns([5, 7])
+    with col1:
+        st.plotly_chart(fig_pie, use_container_width=True)
+    with col2:
+        st.plotly_chart(fig_comp, use_container_width=True)
+
+    col3, col4 = st.columns([7, 5])
+    with col3:
+        st.plotly_chart(fig_elo, use_container_width=True)
+    with col4:
+        st.markdown("#### Clustering Method Comparison")
+        st.dataframe(mc_display, use_container_width=True, hide_index=True)
+        st.caption(
+            "Silhouette and CH: higher is better. "
+            "Davies-Bouldin: lower is better. "
+            "K-Means (k=5) is used as the primary pipeline method."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Sidebar: global controls
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    st.image("https://lichess1.org/assets/logo/lichess-favicon-32.png", width=32)
+    st.title("ChessInsight")
+    st.caption("Team 029 · CSE 6242 · Spring 2026")
+    st.divider()
+
+    k_global = st.slider(
+        "Global cluster count (k)",
+        min_value=3,
+        max_value=8,
+        value=DEFAULT_K,
+        step=1,
+        key="global_k",
+        help="Sets the default k for the cluster map tab. You can override it in the tab itself.",
+    )
+
+    st.divider()
+    st.markdown(
+        "**Data:** [Lichess dataset](https://database.lichess.org)  \n"
+        "**Source:** [GitHub](https://github.com/Prago2001/chess-insights)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main tabs
+# ---------------------------------------------------------------------------
+tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    ["Overview", "Player Cluster Map", "Time Analysis", "Classification", "Cluster Analysis"]
+)
+
+with tab1:
+    render_overview_tab(k_global)
+
+with tab2:
+    render_cluster_tab(k_global)
+
+with tab3:
+    render_time_tab()
+
+with tab4:
+    render_classification_tab()
+
+with tab5:
+    render_cluster_analysis_tab()
