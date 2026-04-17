@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="app.diagrams.net" modified="2026-04-17T17:30:00Z" agent="Perplexity" version="24.0.0">
+<mxfile host="app.diagrams.net" modified="2026-04-17T17:40:00Z" agent="Perplexity" version="24.0.0">
   <diagram id="chessinsight-poster" name="ChessInsight Poster">
     <mxGraphModel dx="3000" dy="4000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="3000" pageHeight="4000" math="0" shadow="0">
       <root>
@@ -55,66 +55,22 @@
         <mxCell id="sec6" value="&lt;b&gt;CONCLUSIONS &amp;amp; FUTURE WORK&lt;/b&gt;&lt;br&gt;ChessInsight demonstrates that large-scale visual analytics can bridge the gap between raw engine evaluations and human-understandable behavioral patterns in chess. By linking time usage, blunders, and openings to skill tiers, the system helps players and coaches move from &apos;what happened&apos; to &apos;why it happens&apos; across thousands of games.&lt;br&gt;&lt;br&gt;Future work includes live-game integration, personalized player dashboards, and richer opening motifs and opponent-style features for targeted training recommendations." style="rounded=1;glass=0;shadow=1;strokeColor=#004d40;strokeWidth=2;fillColor=#e0f2f1;fontColor=#00332b;text;html=1;whiteSpace=wrap;fontSize=20;align=left;verticalAlign=top;spacingTop=18;spacingLeft=18;spacingRight=18;" vertex="1" parent="1">
           <mxGeometry x="1540" y="1780" width="1380" height="680" as="geometry" />
         </mxCell>
-        <!-- Visualization placeholders -->
-        <!-- Bar chart placeholder -->
-        <mxCell id="viz_bar_bg" value="" style="shape=rectangle;rounded=1;fillColor=#1a237e;strokeColor=none;opacity=60;" vertex="1" parent="1">
-          <mxGeometry x="1580" y="520" width="620" height="260" as="geometry" />
+        <!-- Visualization images from repo -->
+        <!-- Accuracy by tier chart in Results card -->
+        <mxCell id="img_accuracy" value="" style="shape=image;html=1;imageAspect=1;image=https://raw.githubusercontent.com/Prago2001/chess-insights/e0fa5cdb99703b1c1fce73b126c187a6dded47bf/visualizations/accuracy_by_tier.png;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="1220" width="640" height="300" as="geometry" />
         </mxCell>
-        <mxCell id="viz_bar1" value="" style="shape=rectangle;fillColor=#bbdefb;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="1620" y="640" width="60" height="120" as="geometry" />
+        <!-- Confusion matrix next to accuracy chart -->
+        <mxCell id="img_confusion" value="" style="shape=image;html=1;imageAspect=1;image=https://raw.githubusercontent.com/Prago2001/chess-insights/e0fa5cdb99703b1c1fce73b126c187a6dded47bf/visualizations/confusion_matrix.png;" vertex="1" parent="1">
+          <mxGeometry x="2240" y="1220" width="640" height="300" as="geometry" />
         </mxCell>
-        <mxCell id="viz_bar2" value="" style="shape=rectangle;fillColor=#64b5f6;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="1705" y="600" width="60" height="160" as="geometry" />
+        <!-- Time heatmap under Interactive Visualizations -->
+        <mxCell id="img_time_heatmap" value="" style="shape=image;html=1;imageAspect=1;image=https://raw.githubusercontent.com/Prago2001/chess-insights/e0fa5cdb99703b1c1fce73b126c187a6dded47bf/visualizations/time_heatmap.png;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="760" width="640" height="300" as="geometry" />
         </mxCell>
-        <mxCell id="viz_bar3" value="" style="shape=rectangle;fillColor=#1e88e5;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="1790" y="560" width="60" height="200" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_bar4" value="" style="shape=rectangle;fillColor=#0d47a1;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="1875" y="620" width="60" height="140" as="geometry" />
-        </mxCell>
-        <!-- Heatmap placeholder -->
-        <mxCell id="viz_heat_bg" value="" style="shape=rectangle;rounded=1;fillColor=#004d40;strokeColor=none;opacity=60;" vertex="1" parent="1">
-          <mxGeometry x="2260" y="520" width="620" height="260" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_heat1" value="" style="shape=rectangle;fillColor=#b2dfdb;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="2290" y="550" width="140" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_heat2" value="" style="shape=rectangle;fillColor=#80cbc4;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="2440" y="550" width="140" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_heat3" value="" style="shape=rectangle;fillColor=#26a69a;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="2590" y="550" width="140" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_heat4" value="" style="shape=rectangle;fillColor=#4db6ac;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="2290" y="640" width="140" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_heat5" value="" style="shape=rectangle;fillColor=#00897b;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="2440" y="640" width="140" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_heat6" value="" style="shape=rectangle;fillColor=#00695c;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="2590" y="640" width="140" height="80" as="geometry" />
-        </mxCell>
-        <!-- Player map scatter placeholder -->
-        <mxCell id="viz_scatter_bg" value="" style="shape=rectangle;rounded=1;fillColor=#263238;strokeColor=none;opacity=60;" vertex="1" parent="1">
-          <mxGeometry x="1580" y="910" width="1300" height="210" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_scatter1" value="" style="shape=ellipse;fillColor=#ffcc80;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="1620" y="950" width="30" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_scatter2" value="" style="shape=ellipse;fillColor=#ffab91;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="1700" y="1020" width="30" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_scatter3" value="" style="shape=ellipse;fillColor=#ffcc80;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="1800" y="980" width="30" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_scatter4" value="" style="shape=ellipse;fillColor=#ffe082;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="1900" y="1040" width="30" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_scatter5" value="" style="shape=ellipse;fillColor=#ffab91;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="2100" y="980" width="30" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="viz_scatter6" value="" style="shape=ellipse;fillColor=#ffcc80;strokeColor=none;" vertex="1" parent="1">
-          <mxGeometry x="2300" y="1030" width="30" height="30" as="geometry" />
+        <!-- Cluster embedding scatter plot below header of visualizations -->
+        <mxCell id="img_cluster_embedding" value="" style="shape=image;html=1;imageAspect=1;image=https://raw.githubusercontent.com/Prago2001/chess-insights/e0fa5cdb99703b1c1fce73b126c187a6dded47bf/visualizations/cluster_embedding.png;" vertex="1" parent="1">
+          <mxGeometry x="2240" y="760" width="640" height="300" as="geometry" />
         </mxCell>
         <!-- Footer -->
         <mxCell id="footer" value="Data: Lichess Open Database &amp;middot; Tools: Python, Streamlit, Plotly, scikit-learn, Stockfish &amp;middot; GitHub: github.com/Prago2001/chess-insights" style="text;html=1;strokeColor=none;fillColor=none;fontSize=18;fontColor=#e3f2fd;align=center;verticalAlign=middle;" vertex="1" parent="1">
