@@ -27,10 +27,18 @@ sys.path.append(str(Path(__file__).parent.parent))
 from config import PROCESSED_DATA_DIR, MODELS_DIR, RANDOM_STATE, N_CLUSTERS_RANGE
 
 
+# ---------------------------------------------------------------------------
+# Data preparation and k search
+# ---------------------------------------------------------------------------
+
+
 def prepare_clustering_data(
     player_features: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, List[str]]:
-    """Prepare player-level features for clustering."""
+    """Prepare player-level features for clustering.
+
+    Drops identifiers, fills missing values, and removes constant columns.
+    """
     exclude_cols = ["player", "num_games", "skill_tier", "avg_elo"]
     feature_cols = [
         c
@@ -51,7 +59,7 @@ def prepare_clustering_data(
 
 
 def find_optimal_k(X: np.ndarray, k_range: Tuple[int, int] = N_CLUSTERS_RANGE) -> Dict:
-    """Find optimal number of clusters using multiple metrics."""
+    """Find optimal number of clusters using k-means and internal metrics."""
     results = {
         "k_values": [],
         "inertia": [],
@@ -77,10 +85,47 @@ def find_optimal_k(X: np.ndarray, k_range: Tuple[int, int] = N_CLUSTERS_RANGE) -
         )
 
     best_idx = np.argmax(results["silhouette"])
-    results["optimal_k"] = results["k_values"][best_idx]
+    results["optimal_k"] = int(results["k_values"][best_idx])
     print(f"\nOptimal k based on silhouette score: {results['optimal_k']}")
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Core clustering
+# ---------------------------------------------------------------------------
+
+
+def _cluster_with_method(
+    X_scaled: np.ndarray,
+    n_clusters: int,
+    method: str,
+) -> Tuple[object, np.ndarray, Optional[np.ndarray]]:
+    """Run a single clustering method on standardized features."""
+    if method == "kmeans":
+        model = KMeans(n_clusters=n_clusters, random_state=RANDOM_STATE, n_init=10)
+        labels = model.fit_predict(X_scaled)
+        centers = getattr(model, "cluster_centers_", None)
+    elif method == "hierarchical":
+        model = AgglomerativeClustering(n_clusters=n_clusters)
+        labels = model.fit_predict(X_scaled)
+        centers = None
+    elif method == "dbscan":
+        model = DBSCAN(eps=0.5, min_samples=5)
+        labels = model.fit_predict(X_scaled)
+        centers = None
+    elif method == "gmm":
+        model = GaussianMixture(n_components=n_clusters, random_state=RANDOM_STATE)
+        labels = model.fit_predict(X_scaled)
+        centers = getattr(model, "means_", None)
+    elif method == "birch":
+        model = Birch(n_clusters=n_clusters)
+        labels = model.fit_predict(X_scaled)
+        centers = getattr(model, "subcluster_centers_", None)
+    else:
+        raise ValueError(f"Unknown clustering method: {method}")
+
+    return model, labels, centers
 
 
 def perform_clustering(
@@ -89,45 +134,25 @@ def perform_clustering(
     method: str = "kmeans",
     compute_embedding: bool = True,
 ) -> Dict:
-    """Cluster in standardized feature space and optionally compute a 2D embedding."""
+    """Cluster in standardized feature space then compute an embedding for viz."""
     print(f"Performing {method} clustering with k={n_clusters}...")
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    pca = None
-    explained_variance = 0.0
-    X_for_clustering = X_scaled
+    model, labels, centers = _cluster_with_method(X_scaled, n_clusters, method)
 
-    if method == "kmeans":
-        model = KMeans(n_clusters=n_clusters, random_state=RANDOM_STATE, n_init=10)
-        labels = model.fit_predict(X_for_clustering)
-        cluster_centers = getattr(model, "cluster_centers_", None)
-    elif method == "hierarchical":
-        model = AgglomerativeClustering(n_clusters=n_clusters)
-        labels = model.fit_predict(X_for_clustering)
-        cluster_centers = None
-    elif method == "dbscan":
-        model = DBSCAN(eps=0.5, min_samples=5)
-        labels = model.fit_predict(X_for_clustering)
-        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-        cluster_centers = None
-        print(f"DBSCAN found {n_clusters} clusters")
-    elif method == "gmm":
-        model = GaussianMixture(n_components=n_clusters, random_state=RANDOM_STATE)
-        labels = model.fit_predict(X_for_clustering)
-        cluster_centers = getattr(model, "means_", None)
-    elif method == "birch":
-        model = Birch(n_clusters=n_clusters)
-        labels = model.fit_predict(X_for_clustering)
-        cluster_centers = getattr(model, "subcluster_centers_", None)
-    else:
-        raise ValueError(f"Unknown clustering method: {method}")
+    unique_labels = set(labels)
+    n_found = len(unique_labels) - (1 if -1 in unique_labels else 0)
+    print(f"Method {method} produced {n_found} non-noise clusters")
 
-    if len(set(labels)) > 1:
-        silhouette = silhouette_score(X_for_clustering, labels)
-        calinski = calinski_harabasz_score(X_for_clustering, labels)
-        davies = davies_bouldin_score(X_for_clustering, labels)
+    if n_found < 3:
+        print("Warning: very few clusters found; metrics may be unreliable.")
+
+    if len(unique_labels) > 1:
+        silhouette = silhouette_score(X_scaled, labels)
+        calinski = calinski_harabasz_score(X_scaled, labels)
+        davies = davies_bouldin_score(X_scaled, labels)
     else:
         silhouette = calinski = davies = 0.0
 
@@ -164,53 +189,65 @@ def perform_clustering(
     return {
         "model": model,
         "scaler": scaler,
-        "pca": pca,
+        "pca": None,
         "method": method,
         "n_clusters": n_clusters,
         "labels": labels,
-        "cluster_centers": cluster_centers,
+        "cluster_centers": centers,
         "feature_columns": list(X.columns),
         "metrics": {
             "silhouette_score": silhouette,
             "calinski_harabasz_index": calinski,
             "davies_bouldin_index": davies,
-            "pca_explained_variance": explained_variance,
+            "pca_explained_variance": 0.0,
         },
         "embedding_2d": embedding_2d,
         "embedding_method": embedding_method,
         "X_scaled": X_scaled,
-        "X_pca": X_for_clustering,
+        "X_pca": X_scaled,
     }
 
 
 def compare_clustering_methods(
     X: pd.DataFrame, n_clusters: int, methods: Optional[List[str]] = None
 ) -> pd.DataFrame:
-    """Run multiple clustering algorithms on the same feature matrix and compare metrics."""
+    """Run multiple clustering algorithms on the same feature matrix."""
     if methods is None:
-        methods = ["kmeans", "hierarchical", "dbscan", "gmm", "birch"]
+        methods = ["kmeans", "birch"]
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
 
     rows: List[Dict] = []
     for method in methods:
         try:
-            res = perform_clustering(
-                X, n_clusters=n_clusters, method=method, compute_embedding=False
-            )
-            m = res["metrics"]
+            model, labels, _ = _cluster_with_method(X_scaled, n_clusters, method)
+            if len(set(labels)) > 1:
+                silhouette = silhouette_score(X_scaled, labels)
+                calinski = calinski_harabasz_score(X_scaled, labels)
+                davies = davies_bouldin_score(X_scaled, labels)
+            else:
+                silhouette = calinski = davies = 0.0
+
             rows.append(
                 {
                     "method": method,
-                    "n_clusters": res["n_clusters"],
-                    "silhouette_score": m["silhouette_score"],
-                    "calinski_harabasz_index": m["calinski_harabasz_index"],
-                    "davies_bouldin_index": m["davies_bouldin_index"],
-                    "pca_explained_variance": m["pca_explained_variance"],
+                    "n_clusters": n_clusters,
+                    "silhouette_score": silhouette,
+                    "calinski_harabasz_index": calinski,
+                    "davies_bouldin_index": davies,
+                    "pca_explained_variance": 0.0,
                 }
             )
         except Exception as e:
             print(f"Skipping method {method} due to error: {e}")
 
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# Cluster analysis and reporting
+# ---------------------------------------------------------------------------
 
 
 def analyze_clusters(
@@ -220,7 +257,7 @@ def analyze_clusters(
     df = player_features.copy()
     df["cluster"] = labels
 
-    cluster_stats = []
+    cluster_stats: List[Dict] = []
 
     for cluster_id in sorted(df["cluster"].unique()):
         if cluster_id == -1:
@@ -228,17 +265,17 @@ def analyze_clusters(
 
         cluster_data = df[df["cluster"] == cluster_id]
 
-        stats = {
-            "cluster": cluster_id,
-            "size": len(cluster_data),
+        stats: Dict = {
+            "cluster": int(cluster_id),
+            "size": int(len(cluster_data)),
             "pct_of_total": len(cluster_data) / len(df) * 100,
             "avg_elo": (
-                cluster_data["avg_elo"].mean()
+                float(cluster_data["avg_elo"].mean())
                 if "avg_elo" in cluster_data.columns
                 else np.nan
             ),
             "avg_games": (
-                cluster_data["num_games"].mean()
+                float(cluster_data["num_games"].mean())
                 if "num_games" in cluster_data.columns
                 else np.nan
             ),
@@ -251,7 +288,7 @@ def analyze_clusters(
 
         for col in feature_columns:
             if col in cluster_data.columns:
-                stats[f"{col}_mean"] = cluster_data[col].mean()
+                stats[f"{col}_mean"] = float(cluster_data[col].mean())
 
         cluster_stats.append(stats)
 
@@ -388,14 +425,14 @@ if __name__ == "__main__":
         print(f"Using {len(feature_cols)} features for clustering")
 
         k_results = find_optimal_k(X.values, k_range=(3, 5))
-        optimal_k = 4
+        optimal_k = int(k_results.get("optimal_k", 4))
         print(
             f"Using n_clusters={optimal_k} for behavioral clustering "
-            "based on embedding inspection and internal metrics."
+            "based on internal metrics."
         )
 
         print(
-            "\nEvaluating alternative clustering methods on the same features (k = 4)..."
+            f"\nEvaluating alternative clustering methods on the same features (k = {optimal_k})..."
         )
         method_comparison_df = compare_clustering_methods(X, n_clusters=optimal_k)
         comparison_path = MODELS_DIR / "clustering_method_comparison.csv"
