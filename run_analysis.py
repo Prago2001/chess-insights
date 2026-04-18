@@ -312,13 +312,13 @@ def run_full_pipeline(
     print(f"Clustering data: {len(X_cluster)} players, {len(feature_cols)} features")
 
     k_results = find_optimal_k(X_cluster.values, k_range=(3, 5))
-    optimal_k = 4
+    optimal_k = int(k_results.get('optimal_k', 4))
     print(
         f"Using n_clusters={optimal_k} for primary behavioral clustering "
-        "based on embedding inspection and internal metrics."
+        "based on internal metrics."
     )
 
-    print("\nEvaluating alternative clustering methods on the same features (k = 4)...")
+    print(f"\nEvaluating alternative clustering methods on the same features (k = {optimal_k})...")
     method_comparison_df = compare_clustering_methods(X_cluster, n_clusters=optimal_k)
     comparison_path = MODELS_DIR / "clustering_method_comparison.csv"
     method_comparison_df.to_csv(comparison_path, index=False)
