@@ -79,18 +79,11 @@ def load_real_dataset(
     n_games: int = SAMPLE_SIZE,
     force_reload: bool = False,
 ) -> tuple:
-    """Load real chess game data from a PGN file.
-
-    Data is stored and read as Parquet chunk files created by
-    load_or_create_dataset() in data_loader.py, located under:
-        PROCESSED_DATA_DIR / "chunks" / games_processed_part_XXXX.parquet
-        PROCESSED_DATA_DIR / "chunks" / games_full_part_XXXX.parquet
-    """
+    """Load real chess game data from a PGN file."""
     chunks_dir = PROCESSED_DATA_DIR / "chunks"
     processed_chunks = sorted(chunks_dir.glob("games_processed_part_*.parquet"))
     full_chunks = sorted(chunks_dir.glob("games_full_part_*.parquet"))
 
-    # Load from existing chunks when available and reload is not forced
     if processed_chunks and full_chunks and not force_reload:
         print(
             f"Loading cached dataset from {len(processed_chunks)} chunk(s) "
@@ -105,7 +98,6 @@ def load_real_dataset(
         print(f"Loaded {len(games_df)} games from chunks")
         return games_df, full_games_df
 
-    # Parse PGN file
     if not pgn_path.exists():
         print(f"ERROR: PGN file not found at {pgn_path}")
         print("Please ensure data_1m_games.pgn is in the data/raw/ directory")
@@ -124,11 +116,9 @@ def load_real_dataset(
 
     print(f"Successfully parsed {len(games_list)} valid games")
 
-    # Create DataFrames
     games_df = create_games_dataframe(games_list)
     full_games_df = pd.DataFrame(games_list)
 
-    # Print statistics
     stats = get_dataset_stats(games_df)
     print(f"\nDataset Statistics:")
     print(f"  Total games: {stats['total_games']:,}")
@@ -137,7 +127,6 @@ def load_real_dataset(
     print(f"  Rating range: {stats['rating_range'][0]} - {stats['rating_range'][1]}")
     print(f"  Games with clock data: {stats['games_with_clock_data']:,}")
 
-    # Save as chunk files under PROCESSED_DATA_DIR / "chunks"
     split_dataframe_to_parquet_chunks(games_df, PROCESSED_DATA_DIR, "games_processed")
     split_dataframe_to_parquet_chunks(full_games_df, PROCESSED_DATA_DIR, "games_full")
     print(f"\nCached processed data to {chunks_dir}")
@@ -152,7 +141,6 @@ def generate_synthetic_dataset(
     print(f"Generating synthetic dataset with {n_games} games...")
     np.random.seed(random_state)
 
-    # Generate player ratings with realistic distribution
     white_elo = np.random.normal(1500, 350, n_games).clip(600, 2800).astype(int)
     black_elo = np.random.normal(1500, 350, n_games).clip(600, 2800).astype(int)
 
@@ -247,7 +235,6 @@ def run_full_pipeline(
     print("Team 029 - CSE6242 Spring 2026")
     print("=" * 70)
 
-    # Step 1: Load/Generate Data
     print("\n" + "=" * 70)
     print("STEP 1: Data Loading")
     print("=" * 70)
@@ -263,11 +250,9 @@ def run_full_pipeline(
         print("Using synthetic data (fallback mode)")
         games_df = generate_synthetic_dataset(n_games=n_games)
 
-    # Save raw games snapshot
     games_df.to_parquet(PROCESSED_DATA_DIR / "games_processed.parquet")
     print(f"Saved games to {PROCESSED_DATA_DIR / 'games_processed.parquet'}")
 
-    # Step 2: Feature Extraction
     print("\n" + "=" * 70)
     print("STEP 2: Feature Extraction")
     print("=" * 70)
@@ -282,7 +267,6 @@ def run_full_pipeline(
 
     save_features(features_df, player_features)
 
-    # Step 3: Skill Classification (multiple models)
     print("\n" + "=" * 70)
     print("STEP 3: Skill Tier Classification")
     print("=" * 70)
@@ -302,7 +286,6 @@ def run_full_pipeline(
         results = train_classifier(X, y, model_type=m_type)
         print_results_summary(results)
 
-        # Save under type-specific name
         save_model(results, model_name=f"skill_classifier_{m_type}")
 
         results_by_type[m_type] = results
@@ -310,16 +293,13 @@ def run_full_pipeline(
             best_test_acc = results["metrics"]["test_accuracy"]
             best_type = m_type
 
-    # Use the best-performing model as the canonical classifier
     assert best_type is not None
     classification_results = results_by_type[best_type]
     print("\n" + "-" * 60)
     print(f"Best-performing model based on test accuracy: {best_type}")
 
-    # Also save it under the generic skill_classifier name for dashboards
     save_model(classification_results, model_name="skill_classifier")
 
-    # Step 4: Behavioral Clustering
     print("\n" + "=" * 70)
     print("STEP 4: Behavioral Clustering")
     print("=" * 70)
@@ -352,10 +332,8 @@ def run_full_pipeline(
     else:
         best_method = "kmeans"
 
-    # After method selection, temporarily override:
-    best_method = "kmeans"
-
     print(f"\nSelected primary clustering method: {best_method} (k = {optimal_k})")
+
     clustering_results = perform_clustering(
         X_cluster, n_clusters=optimal_k, method=best_method
     )
@@ -372,7 +350,6 @@ def run_full_pipeline(
     )
     save_clustering_results(clustering_results, cluster_stats, cluster_names)
 
-    # Step 5: Visualizations
     print("\n" + "=" * 70)
     print("STEP 5: Generating Visualizations")
     print("=" * 70)
@@ -388,7 +365,6 @@ def run_full_pipeline(
         cluster_names,
     )
 
-    # Step 6: Summary Report
     print("\n" + "=" * 70)
     print("ANALYSIS COMPLETE - SUMMARY")
     print("=" * 70)
