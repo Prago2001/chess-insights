@@ -12,14 +12,14 @@
   },
   "classification": {
     "model_type": "xgboost",
-    "test_accuracy": "44.6%",
-    "adjacent_accuracy": "55.3%",
-    "macro_f1": "0.4375"
+    "test_accuracy": "44.5%",
+    "adjacent_accuracy": "55.4%",
+    "macro_f1": "0.4365"
   },
   "clustering": {
-    "method": "kmeans",
+    "method": "birch",
     "n_clusters": 5,
-    "silhouette_score": "0.1151",
+    "silhouette_score": "0.2955",
     "archetypes": {
       "0": "Cluster 1",
       "1": "Cluster 2",
