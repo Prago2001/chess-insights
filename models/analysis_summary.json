@@ -12,19 +12,20 @@
   },
   "classification": {
     "model_type": "xgboost",
-    "test_accuracy": "44.5%",
+    "test_accuracy": "44.6%",
     "adjacent_accuracy": "55.3%",
-    "macro_f1": "0.4370"
+    "macro_f1": "0.4375"
   },
   "clustering": {
-    "method": "birch",
-    "n_clusters": 4,
-    "silhouette_score": "0.8095",
+    "method": "kmeans",
+    "n_clusters": 5,
+    "silhouette_score": "0.1151",
     "archetypes": {
       "0": "Cluster 1",
       "1": "Cluster 2",
       "2": "Cluster 3",
-      "3": "Cluster 4"
+      "3": "Cluster 4",
+      "4": "Cluster 5"
     }
   }
 }

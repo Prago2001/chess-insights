@@ -73,6 +73,7 @@ from src.visualizations import (
 # Data loading helpers
 # ---------------------------------------------------------------------------
 
+
 def load_real_dataset(
     pgn_path: Path = PGN_FILE_PATH,
     n_games: int = SAMPLE_SIZE,
@@ -189,7 +190,19 @@ def generate_synthetic_dataset(
             results.append("0-1")
 
     num_moves = np.random.normal(70, 25, n_games).clip(20, 200).astype(int)
-    eco_codes = ["A00", "B00", "B20", "B50", "C00", "C20", "C50", "D00", "D30", "E00", "E60"]
+    eco_codes = [
+        "A00",
+        "B00",
+        "B20",
+        "B50",
+        "C00",
+        "C20",
+        "C50",
+        "D00",
+        "D30",
+        "E00",
+        "E60",
+    ]
     opening_eco = np.random.choice(eco_codes, n_games)
 
     games_df = pd.DataFrame(
@@ -223,6 +236,7 @@ def generate_synthetic_dataset(
 # ---------------------------------------------------------------------------
 # Full pipeline
 # ---------------------------------------------------------------------------
+
 
 def run_full_pipeline(
     n_games: int = SAMPLE_SIZE, use_real_data: bool = True, force_reload: bool = False
@@ -259,7 +273,9 @@ def run_full_pipeline(
     print("=" * 70)
 
     features_df = extract_features_from_dataframe(games_df, full_games=full_games_df)
-    print(f"Extracted {len(features_df.columns)} features from {len(features_df)} games")
+    print(
+        f"Extracted {len(features_df.columns)} features from {len(features_df)} games"
+    )
 
     player_features = aggregate_player_features(features_df, min_games=5)
     print(f"Aggregated features for {len(player_features)} players")
@@ -312,13 +328,15 @@ def run_full_pipeline(
     print(f"Clustering data: {len(X_cluster)} players, {len(feature_cols)} features")
 
     k_results = find_optimal_k(X_cluster.values, k_range=(3, 5))
-    optimal_k = int(k_results.get('optimal_k', 4))
+    optimal_k = int(k_results.get("optimal_k", 4))
     print(
         f"Using n_clusters={optimal_k} for primary behavioral clustering "
         "based on internal metrics."
     )
 
-    print(f"\nEvaluating alternative clustering methods on the same features (k = {optimal_k})...")
+    print(
+        f"\nEvaluating alternative clustering methods on the same features (k = {optimal_k})..."
+    )
     method_comparison_df = compare_clustering_methods(X_cluster, n_clusters=optimal_k)
     comparison_path = MODELS_DIR / "clustering_method_comparison.csv"
     method_comparison_df.to_csv(comparison_path, index=False)
@@ -334,9 +352,13 @@ def run_full_pipeline(
     else:
         best_method = "kmeans"
 
-    print(f"\nSelected primary clustering method: {best_method} (k = {optimal_k})")
+    # After method selection, temporarily override:
+    best_method = "kmeans"
 
-    clustering_results = perform_clustering(X_cluster, n_clusters=optimal_k, method=best_method)
+    print(f"\nSelected primary clustering method: {best_method} (k = {optimal_k})")
+    clustering_results = perform_clustering(
+        X_cluster, n_clusters=optimal_k, method=best_method
+    )
 
     cluster_stats = analyze_clusters(
         player_features, clustering_results["labels"], feature_cols
@@ -372,7 +394,9 @@ def run_full_pipeline(
     print("=" * 70)
 
     data_source = (
-        f"Lichess Database ({PGN_FILE_PATH.name})" if use_real_data else "Synthetic data"
+        f"Lichess Database ({PGN_FILE_PATH.name})"
+        if use_real_data
+        else "Synthetic data"
     )
 
     summary = {

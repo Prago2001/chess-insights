@@ -1,40 +1,47 @@
 {
-  "method": "birch",
-  "n_clusters": 4,
+  "method": "kmeans",
+  "n_clusters": 5,
   "metrics": {
-    "silhouette_score": 0.8094813585882973,
-    "calinski_harabasz_index": 2286.357277659272,
-    "davies_bouldin_index": 0.2303118544379529,
-    "pca_explained_variance": 0.8023877296906988
+    "silhouette_score": 0.11508099506043074,
+    "calinski_harabasz_index": 2293.3584784078985,
+    "davies_bouldin_index": 1.620176565184945,
+    "pca_explained_variance": 0.0
   },
   "cluster_names": {
     "0": {
       "name": "Cluster 1",
-      "description": "Cluster of players with 22670 players, avg Elo \u2248 1699, dominant tier Advanced.",
+      "description": "Cluster of players with 9425 players, avg Elo \u2248 1614, dominant tier Advanced.",
       "characteristics": [],
-      "size": 22670,
-      "avg_elo": 1699.068456045453
+      "size": 9425,
+      "avg_elo": 1613.6793245746446
     },
     "1": {
       "name": "Cluster 2",
+      "description": "Cluster of players with 10599 players, avg Elo \u2248 1834, dominant tier Advanced.",
+      "characteristics": [],
+      "size": 10599,
+      "avg_elo": 1833.6359548920293
+    },
+    "2": {
+      "name": "Cluster 3",
+      "description": "Cluster of players with 83 players, avg Elo \u2248 1774, dominant tier Advanced.",
+      "characteristics": [],
+      "size": 83,
+      "avg_elo": 1773.9791769573842
+    },
+    "3": {
+      "name": "Cluster 4",
+      "description": "Cluster of players with 2615 players, avg Elo \u2248 1461, dominant tier Intermediate.",
+      "characteristics": [],
+      "size": 2615,
+      "avg_elo": 1461.4446539687542
+    },
+    "4": {
+      "name": "Cluster 5",
       "description": "Cluster of players with 3 players, avg Elo \u2248 1696, dominant tier Advanced.",
       "characteristics": [],
       "size": 3,
       "avg_elo": 1696.25
-    },
-    "2": {
-      "name": "Cluster 3",
-      "description": "Cluster of players with 51 players, avg Elo \u2248 1815, dominant tier Advanced.",
-      "characteristics": [],
-      "size": 51,
-      "avg_elo": 1814.753061551418
-    },
-    "3": {
-      "name": "Cluster 4",
-      "description": "Cluster of players with 1 players, avg Elo \u2248 2119, dominant tier Expert.",
-      "characteristics": [],
-      "size": 1,
-      "avg_elo": 2118.8571428571427
     }
   }
 }

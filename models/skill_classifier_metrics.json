@@ -1,12 +1,12 @@
 {
   "model_type": "xgboost",
   "metrics": {
-    "val_accuracy": 0.4432481751824818,
-    "test_accuracy": 0.44466747769667475,
-    "adjacent_accuracy": 0.5533252230332523,
-    "macro_precision": 0.4381016036857244,
-    "macro_recall": 0.44163204224047203,
-    "macro_f1": 0.436970840635447
+    "val_accuracy": 0.44253852392538523,
+    "test_accuracy": 0.4458840227088402,
+    "adjacent_accuracy": 0.5530819140308192,
+    "macro_precision": 0.438727404087048,
+    "macro_recall": 0.4415822976690173,
+    "macro_f1": 0.43745724051457635
   },
   "class_distribution": {
     "Advanced": 124206,
