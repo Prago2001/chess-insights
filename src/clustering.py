@@ -17,7 +17,6 @@ from sklearn.metrics import (
     calinski_harabasz_score,
     davies_bouldin_score,
 )
-from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.mixture import GaussianMixture
 import umap
@@ -31,16 +30,7 @@ from config import PROCESSED_DATA_DIR, MODELS_DIR, RANDOM_STATE, N_CLUSTERS_RANG
 def prepare_clustering_data(
     player_features: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, List[str]]:
-    """
-    Prepare player-level features for clustering.
-
-    Args:
-        player_features: DataFrame with player-level aggregated features
-
-    Returns:
-        Tuple of (feature matrix, list of feature names)
-    """
-    # Select numeric feature columns (excluding identifiers)
+    """Prepare player-level features for clustering."""
     exclude_cols = ["player", "num_games", "skill_tier", "avg_elo"]
     feature_cols = [
         c
@@ -50,11 +40,8 @@ def prepare_clustering_data(
     ]
 
     X = player_features[feature_cols].copy()
-
-    # Handle missing values
     X = X.fillna(X.mean())
 
-    # Remove constant columns
     constant_cols = X.columns[X.std() == 0]
     if len(constant_cols) > 0:
         print(f"Removing constant columns: {list(constant_cols)}")
@@ -64,16 +51,7 @@ def prepare_clustering_data(
 
 
 def find_optimal_k(X: np.ndarray, k_range: Tuple[int, int] = N_CLUSTERS_RANGE) -> Dict:
-    """
-    Find optimal number of clusters using multiple metrics.
-
-    Args:
-        X: Scaled feature matrix
-        k_range: Range of k values to try
-
-    Returns:
-        Dictionary with evaluation metrics for each k
-    """
+    """Find optimal number of clusters using multiple metrics."""
     results = {
         "k_values": [],
         "inertia": [],
@@ -98,7 +76,6 @@ def find_optimal_k(X: np.ndarray, k_range: Tuple[int, int] = N_CLUSTERS_RANGE) -
             f"CH={results['calinski_harabasz'][-1]:.1f}"
         )
 
-    # Find best k based on silhouette score
     best_idx = np.argmax(results["silhouette"])
     results["optimal_k"] = results["k_values"][best_idx]
     print(f"\nOptimal k based on silhouette score: {results['optimal_k']}")
@@ -112,22 +89,34 @@ def perform_clustering(
     method: str = "kmeans",
     compute_embedding: bool = True,
 ) -> Dict:
+    """Cluster in standardized feature space and optionally compute a 2D embedding."""
     print(f"Performing {method} clustering with k={n_clusters}...")
 
-    # Scale features
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # For the main run, CLUSTER DIRECTLY IN STANDARDIZED SPACE
-    X_for_clustering = X_scaled
     pca = None
     explained_variance = 0.0
-    print("Clustering without PCA (using standardized feature space).")
+    X_for_clustering = X_scaled
 
     if method == "kmeans":
         model = KMeans(n_clusters=n_clusters, random_state=RANDOM_STATE, n_init=10)
         labels = model.fit_predict(X_for_clustering)
         cluster_centers = getattr(model, "cluster_centers_", None)
+    elif method == "hierarchical":
+        model = AgglomerativeClustering(n_clusters=n_clusters)
+        labels = model.fit_predict(X_for_clustering)
+        cluster_centers = None
+    elif method == "dbscan":
+        model = DBSCAN(eps=0.5, min_samples=5)
+        labels = model.fit_predict(X_for_clustering)
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        cluster_centers = None
+        print(f"DBSCAN found {n_clusters} clusters")
+    elif method == "gmm":
+        model = GaussianMixture(n_components=n_clusters, random_state=RANDOM_STATE)
+        labels = model.fit_predict(X_for_clustering)
+        cluster_centers = getattr(model, "means_", None)
     elif method == "birch":
         model = Birch(n_clusters=n_clusters)
         labels = model.fit_predict(X_for_clustering)
@@ -135,7 +124,6 @@ def perform_clustering(
     else:
         raise ValueError(f"Unknown clustering method: {method}")
 
-    # metrics computed in the same space
     if len(set(labels)) > 1:
         silhouette = silhouette_score(X_for_clustering, labels)
         calinski = calinski_harabasz_score(X_for_clustering, labels)
@@ -143,9 +131,13 @@ def perform_clustering(
     else:
         silhouette = calinski = davies = 0.0
 
-    # OPTIONAL: compute a 2D embedding purely for visualization (UMAP on X_scaled)
+    print("Clustering metrics:")
+    print(f"  Silhouette Score: {silhouette:.4f}")
+    print(f"  Calinski-Harabasz Index: {calinski:.1f}")
+    print(f"  Davies-Bouldin Index: {davies:.4f}")
+
     embedding_2d = None
-    embedding_method = None
+    embedding_method: Optional[str] = None
     if compute_embedding:
         try:
             print("Computing UMAP embedding for visualization...")
@@ -157,8 +149,17 @@ def perform_clustering(
             )
             embedding_2d = reducer.fit_transform(X_scaled)
             embedding_method = "umap"
+            print("UMAP embedding complete")
         except Exception as e:
-            print(f"UMAP failed ({e}); skipping embedding.")
+            print(f"UMAP failed ({e}); falling back to t-SNE")
+            tsne = TSNE(
+                n_components=2,
+                random_state=RANDOM_STATE,
+                perplexity=min(30, len(X_scaled) - 1),
+            )
+            embedding_2d = tsne.fit_transform(X_scaled)
+            embedding_method = "tsne"
+            print("t-SNE embedding complete")
 
     return {
         "model": model,
@@ -185,12 +186,7 @@ def perform_clustering(
 def compare_clustering_methods(
     X: pd.DataFrame, n_clusters: int, methods: Optional[List[str]] = None
 ) -> pd.DataFrame:
-    """
-    Run multiple clustering algorithms on the same feature matrix and compare metrics.
-
-    This helper is intended for experimentation when exploring alternative
-    behavioral clustering techniques beyond k-means.
-    """
+    """Run multiple clustering algorithms on the same feature matrix and compare metrics."""
     if methods is None:
         methods = ["kmeans", "hierarchical", "dbscan", "gmm", "birch"]
 
@@ -220,24 +216,14 @@ def compare_clustering_methods(
 def analyze_clusters(
     player_features: pd.DataFrame, labels: np.ndarray, feature_columns: List[str]
 ) -> pd.DataFrame:
-    """
-    Analyze cluster characteristics to identify archetypes.
-
-    Args:
-        player_features: Original player features DataFrame
-        labels: Cluster labels
-        feature_columns: List of feature column names used
-
-    Returns:
-        DataFrame with cluster statistics
-    """
+    """Analyze cluster characteristics and compute per-feature means."""
     df = player_features.copy()
     df["cluster"] = labels
 
     cluster_stats = []
 
     for cluster_id in sorted(df["cluster"].unique()):
-        if cluster_id == -1:  # DBSCAN noise points
+        if cluster_id == -1:
             continue
 
         cluster_data = df[df["cluster"] == cluster_id]
@@ -258,14 +244,12 @@ def analyze_clusters(
             ),
         }
 
-        # Skill tier distribution (4 tiers per proposal)
         if "skill_tier" in cluster_data.columns:
             tier_dist = cluster_data["skill_tier"].value_counts(normalize=True)
             for tier in ["Beginner", "Intermediate", "Advanced", "Expert"]:
                 stats[f"pct_{tier.lower()}"] = tier_dist.get(tier, 0) * 100
 
-        # Key feature statistics
-        for col in feature_columns[:10]:  # Top 10 features
+        for col in feature_columns:
             if col in cluster_data.columns:
                 stats[f"{col}_mean"] = cluster_data[col].mean()
 
@@ -277,9 +261,7 @@ def analyze_clusters(
 def name_clusters(
     cluster_stats: pd.DataFrame, player_features: pd.DataFrame, labels: np.ndarray
 ) -> Dict[int, Dict]:
-    """
-    Name clusters numerically (Cluster 1, Cluster 2, ...) with a concise description.
-    """
+    """Name clusters numerically with a concise description."""
     df = player_features.copy()
     df["cluster"] = labels
 
@@ -325,16 +307,7 @@ def save_clustering_results(
     cluster_names: Dict,
     model_name: str = "player_clustering",
 ):
-    """
-    Save clustering results to disk.
-
-    Args:
-        results: Dictionary from perform_clustering
-        cluster_stats: DataFrame with cluster statistics
-        cluster_names: Dictionary with cluster names
-        model_name: Name for saved files
-    """
-    # Save model
+    """Save clustering model, metrics, stats, and embeddings to disk."""
     model_path = MODELS_DIR / f"{model_name}.pkl"
     with open(model_path, "wb") as f:
         pickle.dump(
@@ -348,7 +321,6 @@ def save_clustering_results(
         )
     print(f"Saved clustering model to {model_path}")
 
-    # Save metrics and names
     metrics_path = MODELS_DIR / f"{model_name}_results.json"
     results_to_save = {
         "method": results["method"],
@@ -360,12 +332,10 @@ def save_clustering_results(
         json.dump(results_to_save, f, indent=2)
     print(f"Saved clustering results to {metrics_path}")
 
-    # Save cluster statistics
     stats_path = MODELS_DIR / f"{model_name}_statistics.csv"
     cluster_stats.to_csv(stats_path, index=False)
     print(f"Saved cluster statistics to {stats_path}")
 
-    # Save embeddings for visualization
     embedding_path = PROCESSED_DATA_DIR / f"{model_name}_embeddings.parquet"
     embedding_df = pd.DataFrame(
         {
@@ -386,7 +356,7 @@ def print_clustering_summary(
     print("CLUSTERING RESULTS SUMMARY")
     print("=" * 60)
 
-    print(f"\nClustering Metrics:")
+    print("\nClustering Metrics:")
     print(f"  Silhouette Score: {metrics['silhouette_score']:.4f}")
     print(f"  Calinski-Harabasz Index: {metrics['calinski_harabasz_index']:.1f}")
     print(f"  Davies-Bouldin Index: {metrics['davies_bouldin_index']:.4f}")
@@ -408,18 +378,15 @@ if __name__ == "__main__":
     print("ChessInsight Behavioral Clustering")
     print("=" * 50)
 
-    # Load player features
     player_path = PROCESSED_DATA_DIR / "player_features.parquet"
 
     if player_path.exists():
         player_features = pd.read_parquet(player_path)
         print(f"Loaded features for {len(player_features)} players")
 
-        # Prepare data
         X, feature_cols = prepare_clustering_data(player_features)
         print(f"Using {len(feature_cols)} features for clustering")
 
-        # Evaluate k in [3, 5] but use 4 clusters for improved interpretability
         k_results = find_optimal_k(X.values, k_range=(3, 5))
         optimal_k = 4
         print(
@@ -427,7 +394,6 @@ if __name__ == "__main__":
             "based on embedding inspection and internal metrics."
         )
 
-        # Compare multiple clustering methods and save comparison
         print(
             "\nEvaluating alternative clustering methods on the same features (k = 4)..."
         )
@@ -438,7 +404,6 @@ if __name__ == "__main__":
         if not method_comparison_df.empty:
             print(method_comparison_df.to_string(index=False))
 
-        # Select primary clustering method based on silhouette (then Davies–Bouldin)
         if not method_comparison_df.empty:
             method_sorted = method_comparison_df.sort_values(
                 ["silhouette_score", "davies_bouldin_index"],
@@ -450,21 +415,16 @@ if __name__ == "__main__":
 
         print(f"\nSelected primary clustering method: {best_method} (k = {optimal_k})")
 
-        # Perform clustering with the selected primary method
         results = perform_clustering(X, n_clusters=optimal_k, method=best_method)
 
-        # Analyze clusters
         cluster_stats = analyze_clusters(
             player_features, results["labels"], feature_cols
         )
 
-        # Name clusters numerically
         cluster_names = name_clusters(cluster_stats, player_features, results["labels"])
 
-        # Print summary
         print_clustering_summary(cluster_stats, cluster_names, results["metrics"])
 
-        # Save results
         save_clustering_results(results, cluster_stats, cluster_names)
     else:
         print(f"No player features found at {player_path}")
