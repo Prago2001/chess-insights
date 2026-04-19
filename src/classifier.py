@@ -17,7 +17,6 @@ from sklearn.metrics import (
     accuracy_score,
     classification_report,
     confusion_matrix,
-    f1_score,
     precision_recall_fscore_support,
 )
 from xgboost import XGBClassifier
@@ -29,6 +28,7 @@ from config import (
     PROCESSED_DATA_DIR,
     MODELS_DIR,
     SKILL_TIERS,
+    MIN_GAMES_PER_PLAYER,
     RANDOM_STATE,
     TEST_SIZE,
     VAL_SIZE,
@@ -42,8 +42,8 @@ def _add_engineered_features(features_df: pd.DataFrame, target_color: str) -> pd
     """Add engineered behavioral features derived from base features.
 
     These are lightweight ratios and interaction terms that can be computed
-    directly from the existing synthetic/clock-based features without
-    re-running feature extraction.
+    directly from the existing clock-based features without re-running
+    feature extraction.
     """
     df = features_df.copy()
     p = f"{target_color}_"
@@ -142,6 +142,10 @@ def prepare_classification_data(
         "opening_aggression_score",
         "book_deviation_move",
         "num_moves",
+        # Time control one-hot features (fixes time variance confounding)
+        "is_bullet",
+        "is_blitz",
+        "is_rapid",
     ]
     for col in global_features:
         if col in df.columns:
@@ -159,6 +163,112 @@ def prepare_classification_data(
     y = y[mask]
 
     return X, y
+
+
+def _assign_skill_tier(elo: float) -> str:
+    """Assign a skill tier based on Elo rating using configured thresholds."""
+    for tier, (low, high) in SKILL_TIERS.items():
+        if low <= elo < high:
+            return tier
+    return list(SKILL_TIERS.keys())[-1]  # Default to highest tier
+
+
+def prepare_player_level_data(
+    features_df: pd.DataFrame,
+    min_games: int = None,
+    add_std_features: bool = True,
+) -> Tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
+    """Prepare player-level aggregated data for skill tier classification.
+
+    This aggregates game-level features to player-level by computing mean
+    (and optionally std) of features across all games for each player.
+
+    Args:
+        features_df: Game-level features DataFrame
+        min_games: Minimum games per player (defaults to config MIN_GAMES_PER_PLAYER)
+        add_std_features: Whether to add std features for consistency measurement
+
+    Returns:
+        X: Feature matrix (player-level)
+        y: Skill tier labels
+        player_data: Full player DataFrame with metadata
+    """
+    if min_games is None:
+        min_games = MIN_GAMES_PER_PLAYER
+
+    print(f"Preparing player-level data (min {min_games} games per player)...")
+
+    # Get feature columns (excluding metadata)
+    white_cols = [c for c in features_df.columns
+                  if c.startswith("white_") and c not in ["white_player", "white_skill_tier", "white_elo"]]
+    black_cols = [c for c in features_df.columns
+                  if c.startswith("black_") and c not in ["black_player", "black_skill_tier", "black_elo"]]
+    global_cols = ["avg_position_complexity", "material_imbalance_freq", "piece_activity_score",
+                   "opening_aggression_score", "book_deviation_move", "num_moves"]
+    global_cols = [c for c in global_cols if c in features_df.columns]
+
+    # Prepare white player data
+    df_white = features_df[["white_player", "white_elo"] + white_cols + global_cols].copy()
+    df_white = df_white.rename(columns={"white_player": "player", "white_elo": "elo"})
+    df_white.columns = [c.replace("white_", "") if c.startswith("white_") else c for c in df_white.columns]
+
+    # Prepare black player data
+    df_black = features_df[["black_player", "black_elo"] + black_cols + global_cols].copy()
+    df_black = df_black.rename(columns={"black_player": "player", "black_elo": "elo"})
+    df_black.columns = [c.replace("black_", "") if c.startswith("black_") else c for c in df_black.columns]
+
+    # Combine all games
+    df_all = pd.concat([df_white, df_black], ignore_index=True)
+    print(f"  Total player-game records: {len(df_all):,}")
+
+    # Get numeric columns for aggregation
+    numeric_cols = [c for c in df_all.select_dtypes(include=[np.number]).columns if c != "elo"]
+
+    # Aggregate by player
+    if add_std_features:
+        agg_dict = {col: ["mean", "std"] for col in numeric_cols}
+        agg_dict["elo"] = "mean"
+        player_agg = df_all.groupby("player").agg(agg_dict)
+        # Flatten column names
+        player_agg.columns = [f"{col}_{stat}" if stat != "mean" else col
+                              for col, stat in player_agg.columns]
+        player_agg = player_agg.reset_index()
+        # Fill NaN std values (single game players) with 0
+        std_cols = [c for c in player_agg.columns if c.endswith("_std")]
+        player_agg[std_cols] = player_agg[std_cols].fillna(0)
+    else:
+        agg_dict = {col: "mean" for col in numeric_cols}
+        agg_dict["elo"] = "mean"
+        player_agg = df_all.groupby("player").agg(agg_dict).reset_index()
+
+    # Add game count
+    games_per_player = df_all.groupby("player").size().reset_index(name="game_count")
+    player_agg = player_agg.merge(games_per_player, on="player")
+
+    # Filter by minimum games
+    player_agg = player_agg[player_agg["game_count"] >= min_games]
+    print(f"  Players with {min_games}+ games: {len(player_agg):,}")
+
+    # Assign skill tier based on average Elo
+    player_agg["skill_tier"] = player_agg["elo"].apply(_assign_skill_tier)
+
+    # Prepare feature matrix
+    exclude_cols = ["player", "elo", "game_count", "skill_tier"]
+    feature_cols = [c for c in player_agg.columns if c not in exclude_cols]
+
+    X = player_agg[feature_cols].select_dtypes(include=[np.number])
+    y = player_agg["skill_tier"]
+
+    # Remove rows with missing values
+    mask = X.notna().all(axis=1) & y.notna()
+    X = X[mask]
+    y = y[mask]
+    player_data = player_agg[mask]
+
+    print(f"  Final dataset: {len(X):,} players, {len(X.columns)} features")
+    print(f"  Skill tier distribution:\n{y.value_counts()}")
+
+    return X, y, player_data
 
 
 # ---------------------------------------------------------------------------
@@ -487,20 +597,32 @@ def print_results_summary(results: Dict):
 if __name__ == "__main__":
     print("ChessInsight Skill Classifier")
     print("=" * 50)
+    print(f"Using {len(SKILL_TIERS)}-tier classification: {list(SKILL_TIERS.keys())}")
+    print(f"Minimum games per player: {MIN_GAMES_PER_PLAYER}")
+    print()
 
     features_path = PROCESSED_DATA_DIR / "game_features.parquet"
 
     if features_path.exists():
         features_df = pd.read_parquet(features_path)
-        print(f"Loaded features for {len(features_df)} games")
+        print(f"Loaded features for {len(features_df):,} games")
 
-        X, y = prepare_classification_data(features_df, target_color="white")
-        print(f"Prepared {len(X)} samples with {len(X.columns)} features")
+        # Use player-level classification (aggregated across games)
+        X, y, player_data = prepare_player_level_data(
+            features_df,
+            min_games=MIN_GAMES_PER_PLAYER,
+            add_std_features=True,
+        )
 
         # Train ensemble by default for standalone runs
         results = train_classifier(X, y, model_type="ensemble_soft")
         print_results_summary(results)
         save_model(results)
+
+        # Save player data for downstream use (e.g., clustering, visualization)
+        player_data_path = PROCESSED_DATA_DIR / "player_features.parquet"
+        player_data.to_parquet(player_data_path, index=False)
+        print(f"\nSaved player-level features to {player_data_path}")
     else:
         print(f"No features found at {features_path}")
         print("Please run feature_extractor.py first")

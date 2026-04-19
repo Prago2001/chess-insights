@@ -1,31 +1,29 @@
 {
   "dataset": {
     "total_games": 350060,
-    "unique_players": 238200,
-    "rating_range": "600 - 3265",
+    "unique_players": 44613,
+    "rating_range": "606 - 3253",
     "data_source": "Lichess Database (data_1m_games.pgn)"
   },
   "features": {
-    "game_level_features": 47,
-    "player_level_features": 39,
-    "players_analyzed": 22725
+    "game_level_features": 25,
+    "player_level_features": 34,
+    "players_analyzed": 44613
   },
   "classification": {
-    "model_type": "xgboost",
-    "test_accuracy": "44.5%",
-    "adjacent_accuracy": "55.4%",
-    "macro_f1": "0.4365"
+    "model_type": "random_forest",
+    "test_accuracy": "65.8%",
+    "adjacent_accuracy": "82.9%",
+    "macro_f1": "0.6619"
   },
   "clustering": {
-    "method": "birch",
-    "n_clusters": 5,
-    "silhouette_score": "0.2955",
+    "method": "kmeans",
+    "n_clusters": 3,
+    "silhouette_score": "0.3430",
     "archetypes": {
-      "0": "Cluster 1",
-      "1": "Cluster 2",
-      "2": "Cluster 3",
-      "3": "Cluster 4",
-      "4": "Cluster 5"
+      "0": "Positional Grinders",
+      "1": "Time Scramblers",
+      "2": "Tactical Battlers"
     }
   }
 }

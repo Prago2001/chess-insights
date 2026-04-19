@@ -210,3 +210,4 @@ __marimo__/
 data/raw/data_1m_games.pgn
 data/raw/processed/*
 models/skill_classifier_**.pkl
+models/skill_classifier.pkl

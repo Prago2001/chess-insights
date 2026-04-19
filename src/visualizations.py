@@ -7,14 +7,13 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional
-import json
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
-from config import PROCESSED_DATA_DIR, MODELS_DIR, VIZ_DIR, SKILL_TIERS
+from config import PROCESSED_DATA_DIR, VIZ_DIR, SKILL_TIERS
 
 
 # Set style
@@ -403,13 +402,13 @@ def create_dashboard_wireframe():
              transform=ax1.transAxes, fontsize=9, va='top',
              bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
-    # View 2: Time Usage Heatmap (4 tiers per proposal)
+    # View 2: Time Usage Heatmap (3 tiers)
     ax2 = axes[0, 1]
     ax2.set_title('View 2: Time Usage Heatmap', fontsize=14, fontweight='bold')
-    data = np.random.rand(4, 3) * 20 + 5
+    data = np.random.rand(3, 3) * 20 + 5
     sns.heatmap(data, annot=True, fmt='.1f', cmap='YlOrRd', ax=ax2,
                 xticklabels=['Opening', 'Middlegame', 'Endgame'],
-                yticklabels=['Beginner', 'Intermediate', 'Advanced', 'Expert'])
+                yticklabels=['Beginner', 'Intermediate', 'Advanced'])
     ax2.set_xlabel('Game Phase')
     ax2.set_ylabel('Skill Tier')
     ax2.text(0.02, -0.15, 'Interactive: Filter by cluster/rating',

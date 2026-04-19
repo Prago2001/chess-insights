@@ -5,9 +5,6 @@ Team 029 - CSE6242 Spring 2026
 
 import chess.pgn
 import pandas as pd
-import numpy as np
-import requests
-import io
 import re
 import bz2
 import gzip
@@ -70,6 +67,40 @@ def parse_clock_time(clock_str: str) -> Optional[float]:
             return mins * 60 + secs
         else:
             return float(clock_str)
+    except (ValueError, AttributeError):
+        return None
+
+
+def parse_eval(eval_str: str) -> Optional[float]:
+    """
+    Parse engine evaluation from PGN format.
+
+    Handles:
+        - Centipawn scores: "+0.5", "-1.23", "0.00"
+        - Mate scores: "#5", "#-3" (converted to large centipawn values)
+
+    Args:
+        eval_str: Evaluation string from PGN (e.g., "+0.5", "#-3")
+
+    Returns:
+        Evaluation in centipawns (pawns * 100), or None if parsing fails
+        Mate scores are converted to +/- 10000 centipawns
+    """
+    if not eval_str:
+        return None
+
+    try:
+        eval_str = eval_str.strip()
+
+        # Handle mate scores: #5 means mate in 5 for white, #-3 means mate in 3 for black
+        if eval_str.startswith('#'):
+            mate_in = int(eval_str[1:])
+            # Convert to large centipawn value (positive = white winning)
+            return 10000 if mate_in > 0 else -10000
+
+        # Handle regular centipawn scores (given in pawns, e.g., +0.5 = 50 centipawns)
+        score = float(eval_str)
+        return score * 100  # Convert to centipawns
     except (ValueError, AttributeError):
         return None
 
@@ -153,10 +184,12 @@ def parse_single_game(game: chess.pgn.Game) -> Optional[Dict]:
     if result not in ['1-0', '0-1', '1/2-1/2']:
         return None
 
-    # Extract moves and clock times
+    # Extract moves, clock times, and engine evaluations
     moves = []
     clock_times_white = []
     clock_times_black = []
+    evals_white = []
+    evals_black = []
 
     node = game
     move_num = 0
@@ -171,8 +204,10 @@ def parse_single_game(game: chess.pgn.Game) -> Optional[Dict]:
             'move_san': node.san() if node.move else None,
         }
 
-        # Extract clock time from comment
+        # Extract clock time and eval from comment
         comment = node.comment
+
+        # Parse clock time: [%clk 0:05:30]
         clock_match = re.search(r'\[%clk\s+(\d+:\d+:\d+)\]', comment)
         if clock_match:
             clock_time = parse_clock_time(clock_match.group(1))
@@ -180,6 +215,16 @@ def parse_single_game(game: chess.pgn.Game) -> Optional[Dict]:
                 clock_times_white.append(clock_time)
             else:  # Black's move
                 clock_times_black.append(clock_time)
+
+        # Parse engine evaluation: [%eval +0.5] or [%eval #3]
+        eval_match = re.search(r'\[%eval\s+([#]?[+-]?\d+\.?\d*)\]', comment)
+        if eval_match:
+            eval_score = parse_eval(eval_match.group(1))
+            move_data['eval'] = eval_score
+            if move_num % 2 == 1:  # After White's move
+                evals_white.append(eval_score)
+            else:  # After Black's move
+                evals_black.append(eval_score)
 
         moves.append(move_data)
 
@@ -192,7 +237,7 @@ def parse_single_game(game: chess.pgn.Game) -> Optional[Dict]:
         for tier, (low, high) in SKILL_TIERS.items():
             if low <= elo < high:
                 return tier
-        return 'Master'
+        return 'Advanced'  # Fallback for high Elo players
 
     game_data = {
         'white_player': headers.get('White', ''),
@@ -214,6 +259,9 @@ def parse_single_game(game: chess.pgn.Game) -> Optional[Dict]:
         'moves': moves,
         'clock_times_white': clock_times_white,
         'clock_times_black': clock_times_black,
+        'evals_white': evals_white,
+        'evals_black': evals_black,
+        'has_eval_data': len(evals_white) > 0 or len(evals_black) > 0,
     }
 
     return game_data
@@ -268,13 +316,15 @@ def create_games_dataframe(games: List[Dict]) -> pd.DataFrame:
     Returns:
         DataFrame with game data (excluding move details)
     """
-    # Extract game-level data (exclude detailed moves for the summary DataFrame)
+    # Extract game-level data (exclude detailed moves/evals for the summary DataFrame)
     game_records = []
 
     for game in games:
         record = {k: v for k, v in game.items()
-                  if k not in ['moves', 'clock_times_white', 'clock_times_black']}
+                  if k not in ['moves', 'clock_times_white', 'clock_times_black',
+                               'evals_white', 'evals_black']}
         record['has_clock_data'] = len(game.get('clock_times_white', [])) > 0
+        record['has_eval_data'] = game.get('has_eval_data', False)
         game_records.append(record)
 
     return pd.DataFrame(game_records)
@@ -400,6 +450,7 @@ def get_dataset_stats(df: pd.DataFrame) -> Dict:
         'skill_tier_distribution_white': df['white_skill_tier'].value_counts().to_dict(),
         'skill_tier_distribution_black': df['black_skill_tier'].value_counts().to_dict(),
         'games_with_clock_data': df['has_clock_data'].sum() if 'has_clock_data' in df.columns else 0,
+        'games_with_eval_data': df['has_eval_data'].sum() if 'has_eval_data' in df.columns else 0,
     }
 
     return stats

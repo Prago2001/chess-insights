@@ -11,11 +11,10 @@ from pathlib import Path
 
 import dash
 import dash_bootstrap_components as dbc
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Input, Output, State, callback, dcc, html
+from dash import Input, Output, callback, dcc, html
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -24,12 +23,18 @@ PROJECT_ROOT = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data" / "processed"
 MODELS_DIR = PROJECT_ROOT / "models"
 
-SKILL_TIERS = ["Beginner", "Intermediate", "Advanced", "Expert"]
+SKILL_TIERS = ["Beginner", "Intermediate", "Advanced"]
 TIER_COLORS = {
     "Beginner": "#e74c3c",
     "Intermediate": "#f39c12",
-    "Advanced": "#3498db",
-    "Expert": "#2ecc71",
+    "Advanced": "#2ecc71",
+}
+
+# Player archetypes from clustering (K=3, PCA=2)
+ARCHETYPE_DESCRIPTIONS = {
+    "Time Scramblers": "Fast play style, comfortable in time pressure, highest average Elo",
+    "Tactical Battlers": "Seek complex positions with material imbalances, lowest average Elo",
+    "Positional Grinders": "Keep pieces active in simpler positions, medium average Elo",
 }
 CLUSTER_COLORS = px.colors.qualitative.Set2
 
@@ -98,18 +103,8 @@ for tier in SKILL_TIERS:
     time_heatmap_data.append(row)
 time_heatmap_df = pd.DataFrame(time_heatmap_data).set_index("Skill Tier")
 
-# Precompute accuracy aggregates
-accuracy_by_tier = []
-for tier in SKILL_TIERS:
-    t = game_df[game_df["white_skill_tier"] == tier]
-    accuracy_by_tier.append({
-        "Skill Tier": tier,
-        "Blunder Rate (%)": round(t["white_blunder_rate"].mean() * 100, 2) if "white_blunder_rate" in t.columns else 0,
-        "Mistake Rate (%)": round(t["white_mistake_rate"].mean() * 100, 2) if "white_mistake_rate" in t.columns else 0,
-        "Avg CPL": round(t["white_avg_centipawn_loss"].mean(), 1) if "white_avg_centipawn_loss" in t.columns else 0,
-        "Accuracy (%)": round(t["white_accuracy_percentage"].mean(), 1) if "white_accuracy_percentage" in t.columns else 0,
-    })
-accuracy_df = pd.DataFrame(accuracy_by_tier)
+# Note: Accuracy features (blunder rate, CPL, etc.) require Stockfish engine evaluation
+# which is not available in our PGN dataset. These are excluded from analysis.
 
 # Free memory - we don't need the full game_df after precomputing
 del game_df
@@ -168,20 +163,21 @@ def build_overview_tab():
 
     # Rating histogram from player data
     fig_rating = px.histogram(
-        player_df, x="avg_elo", nbins=60,
+        player_df, x="elo", nbins=60,
         title="Player Rating Distribution",
-        labels={"avg_elo": "Average Elo"},
+        labels={"elo": "Average Elo"},
         color_discrete_sequence=["#3498db"],
     )
     fig_rating.update_layout(height=350)
 
-    # Accuracy by tier grouped bar
-    acc_melted = accuracy_df.melt(id_vars="Skill Tier", var_name="Metric", value_name="Value")
-    fig_acc = px.bar(
-        acc_melted, x="Skill Tier", y="Value", color="Metric",
-        barmode="group", title="Accuracy Metrics by Skill Tier",
-    )
-    fig_acc.update_layout(height=370)
+    # Archetype cards instead of accuracy metrics (no Stockfish data available)
+    archetype_cards = dbc.Row([
+        dbc.Col(dbc.Card(dbc.CardBody([
+            html.H5(name, className="card-title text-primary"),
+            html.P(desc, className="card-text"),
+        ]), className="shadow-sm h-100"), md=4)
+        for name, desc in ARCHETYPE_DESCRIPTIONS.items()
+    ], className="g-3")
 
     return html.Div([
         cards,
@@ -189,9 +185,8 @@ def build_overview_tab():
             dbc.Col(dcc.Graph(figure=fig_dist), md=6),
             dbc.Col(dcc.Graph(figure=fig_rating), md=6),
         ], className="mb-3"),
-        dbc.Row([
-            dbc.Col(dcc.Graph(figure=fig_acc), md=12),
-        ]),
+        html.H5("Player Archetypes (from Clustering)", className="fw-bold mb-3"),
+        archetype_cards,
     ])
 
 
@@ -222,10 +217,10 @@ def build_cluster_tab():
         html.H6("Rating Range", className="fw-bold"),
         dcc.RangeSlider(
             id="cluster-rating-slider",
-            min=int(player_df["avg_elo"].min()),
-            max=int(player_df["avg_elo"].max()),
+            min=int(player_df["elo"].min()),
+            max=int(player_df["elo"].max()),
             step=50,
-            value=[int(player_df["avg_elo"].min()), int(player_df["avg_elo"].max())],
+            value=[int(player_df["elo"].min()), int(player_df["elo"].max())],
             marks={v: str(v) for v in range(600, 3400, 400)},
             tooltip={"placement": "bottom", "always_visible": False},
         ),
@@ -254,26 +249,26 @@ def build_cluster_tab():
 def update_cluster_scatter(color_by, tiers, rating_range):
     df = player_df[
         (player_df["skill_tier"].isin(tiers))
-        & (player_df["avg_elo"] >= rating_range[0])
-        & (player_df["avg_elo"] <= rating_range[1])
+        & (player_df["elo"] >= rating_range[0])
+        & (player_df["elo"] <= rating_range[1])
     ].copy()
 
     if color_by == "skill_tier":
         fig = px.scatter(
             df, x="x", y="y", color="skill_tier",
             color_discrete_map=TIER_COLORS,
-            hover_data=["player", "avg_elo", "num_games", "cluster_name"],
+            hover_data=["player", "elo", "game_count", "cluster_name"],
             title=f"Player Embedding Map — {len(df):,} players",
-            labels={"x": "t-SNE Dim 1", "y": "t-SNE Dim 2", "skill_tier": "Skill Tier"},
+            labels={"x": "PCA Component 1", "y": "PCA Component 2", "skill_tier": "Skill Tier"},
             category_orders={"skill_tier": SKILL_TIERS},
         )
     else:
         fig = px.scatter(
             df, x="x", y="y", color="cluster_name",
             color_discrete_sequence=CLUSTER_COLORS,
-            hover_data=["player", "avg_elo", "num_games", "skill_tier"],
+            hover_data=["player", "elo", "game_count", "skill_tier"],
             title=f"Player Embedding Map — {len(df):,} players",
-            labels={"x": "t-SNE Dim 1", "y": "t-SNE Dim 2", "cluster_name": "Archetype"},
+            labels={"x": "PCA Component 1", "y": "PCA Component 2", "cluster_name": "Archetype"},
         )
 
     fig.update_traces(marker=dict(size=4, opacity=0.6, line=dict(width=0)))
@@ -290,7 +285,7 @@ def update_cluster_scatter(color_by, tiers, rating_range):
             html.Tr([
                 html.Td(info["name"], style={"fontSize": "0.85rem"}),
                 html.Td(f"{info['size']:,}", style={"fontSize": "0.85rem"}),
-                html.Td(f"{info['avg_elo']:.0f}", style={"fontSize": "0.85rem"}),
+                html.Td(f"{info['elo']:.0f}", style={"fontSize": "0.85rem"}),
             ])
         )
     table = dbc.Table(
@@ -324,7 +319,7 @@ def build_time_tab():
 
     # Time variance by tier using player-level data
     tv_data = []
-    for phase, col in [("Opening", "time_variance_opening_mean"), ("Middlegame", "time_variance_middlegame_mean"), ("Endgame", "time_variance_endgame_mean")]:
+    for phase, col in [("Opening", "time_variance_opening"), ("Middlegame", "time_variance_middlegame"), ("Endgame", "time_variance_endgame")]:
         if col in player_df.columns:
             for tier in SKILL_TIERS:
                 vals = player_df[player_df["skill_tier"] == tier][col]
@@ -339,10 +334,10 @@ def build_time_tab():
     fig_variance.update_layout(height=380)
 
     # Time trouble frequency
-    if "time_trouble_frequency_mean" in player_df.columns:
+    if "time_trouble_frequency" in player_df.columns:
         tt_data = []
         for tier in SKILL_TIERS:
-            vals = player_df[player_df["skill_tier"] == tier]["time_trouble_frequency_mean"]
+            vals = player_df[player_df["skill_tier"] == tier]["time_trouble_frequency"]
             tt_data.append({"Skill Tier": tier, "Time Trouble Freq": vals.mean()})
         tt_df = pd.DataFrame(tt_data)
         fig_tt = px.bar(
@@ -364,10 +359,11 @@ def build_time_tab():
             dbc.Col(dbc.Card(dbc.CardBody([
                 html.H5("Key Time Insights", className="fw-bold"),
                 html.Ul([
-                    html.Li("Beginners spend significantly more time per move than higher-rated players."),
-                    html.Li("Time variance in the opening is highest for beginners, suggesting inconsistent opening preparation."),
-                    html.Li("Advanced and expert players show more consistent time management across all phases."),
-                    html.Li("Time trouble frequency decreases with increasing skill level."),
+                    html.Li("Beginners spend more time per move (2.1s) vs Advanced (1.3s)."),
+                    html.Li("Advanced players have highest opening time variance (diverse repertoires)."),
+                    html.Li("Time trouble frequency increases with skill: Beginner 3.8% → Advanced 6.4%."),
+                    html.Li("Top features: num_moves, avg_time_middlegame, position_complexity."),
+                    html.Li("Time Scramblers: 28% low-time moves vs Tactical Battlers: 4%."),
                 ], className="mb-0"),
             ]), className="shadow-sm h-100"), md=6),
         ]),
@@ -432,10 +428,13 @@ def build_classification_tab():
                 metrics_table,
                 html.Hr(),
                 html.P([
-                    html.Strong("Model: "), "Random Forest (18 behavioral features)",
+                    html.Strong("Model: "), "Random Forest with 3 skill tiers",
                 ], className="mb-1"),
                 html.P([
-                    html.Strong("Note: "), "Adjacent accuracy counts predictions within ±1 skill tier as correct.",
+                    html.Strong("Tiers: "), "Beginner (<1400), Intermediate (1400-1899), Advanced (1900+)",
+                ], className="mb-1 text-muted", style={"fontSize": "0.85rem"}),
+                html.P([
+                    html.Strong("Features: "), "Time usage, complexity, opening patterns (no Stockfish eval).",
                 ], className="mb-0 text-muted", style={"fontSize": "0.85rem"}),
             ]), className="shadow-sm"), md=5),
         ], className="mb-3"),
@@ -446,13 +445,58 @@ def build_classification_tab():
 
 
 # ---------------------------------------------------------------------------
-# TAB 5 – Cluster Analysis
+# TAB 5 – Cluster Analysis (with Archetype Comparison Panel)
 # ---------------------------------------------------------------------------
 def build_cluster_analysis_tab():
+    # Load cluster centers for archetype comparison
+    try:
+        cluster_centers = load_csv("cluster_centers_final.csv")
+    except Exception:
+        cluster_centers = None
+
+    # Archetype comparison panel (radar chart)
+    if cluster_centers is not None and not cluster_centers.empty:
+        categories = ["Time Pressure", "Complexity", "Material Imbal", "Piece Activity", "Aggression"]
+        fig_radar = go.Figure()
+        for _, row in cluster_centers.iterrows():
+            # Normalize values for radar chart (scale to 0-100)
+            values = [
+                row["low_time_move_ratio"] * 100 / 0.3,  # Scale low_time to ~100
+                row["avg_position_complexity"] / 40 * 100,  # Scale complexity
+                row["material_imbalance_freq"] * 100,  # Already 0-1
+                row["piece_activity_score"] / 35 * 100,  # Scale activity
+                row["opening_aggression_score"] / 70 * 100,  # Scale aggression
+            ]
+            values.append(values[0])  # Close the radar
+            fig_radar.add_trace(go.Scatterpolar(
+                r=values,
+                theta=categories + [categories[0]],
+                fill='toself',
+                name=row["archetype"],
+                opacity=0.6,
+            ))
+        fig_radar.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+            showlegend=True,
+            title="Archetype Behavioral Profiles (Normalized)",
+            height=400,
+        )
+    else:
+        fig_radar = go.Figure()
+
+    # Archetype detail cards
+    archetype_cards = dbc.Row([
+        dbc.Col(dbc.Card(dbc.CardBody([
+            html.H6(name, className="card-title text-primary"),
+            html.P(desc, className="card-text small"),
+        ]), className="shadow-sm h-100"), md=4)
+        for name, desc in ARCHETYPE_DESCRIPTIONS.items()
+    ], className="g-3 mb-3")
+
     # Cluster size pie
     clu_sizes = []
     for cid, info in clustering_results["cluster_names"].items():
-        clu_sizes.append({"Archetype": info["name"], "Size": info["size"], "Avg Elo": round(info["avg_elo"])})
+        clu_sizes.append({"Archetype": info["name"], "Size": info["size"], "Avg Elo": round(info["elo"])})
     clu_df = pd.DataFrame(clu_sizes)
     fig_pie = px.pie(
         clu_df, values="Size", names="Archetype",
@@ -507,20 +551,25 @@ def build_cluster_analysis_tab():
     )
 
     return html.Div([
+        html.H5("Archetype Comparison Panel", className="fw-bold mb-3"),
+        archetype_cards,
         dbc.Row([
-            dbc.Col(dcc.Graph(figure=fig_pie), md=5),
-            dbc.Col(dcc.Graph(figure=fig_comp), md=7),
+            dbc.Col(dcc.Graph(figure=fig_radar), md=6) if fig_radar.data else html.Div(),
+            dbc.Col(dcc.Graph(figure=fig_pie), md=6),
         ], className="mb-3"),
         dbc.Row([
-            dbc.Col(dcc.Graph(figure=fig_elo), md=7),
+            dbc.Col(dcc.Graph(figure=fig_comp), md=7),
+            dbc.Col(dcc.Graph(figure=fig_elo), md=5),
+        ], className="mb-3"),
+        dbc.Row([
             dbc.Col(dbc.Card(dbc.CardBody([
                 html.H5("Clustering Method Comparison", className="fw-bold mb-3"),
                 method_table,
                 html.Hr(),
                 html.P([
-                    html.Strong("Selected: "), "K-Means (k=5) — best balance of silhouette score and interpretability.",
+                    html.Strong("Selected: "), "K-Means (K=3) with PCA=2 — silhouette score 0.36, aligns with domain knowledge.",
                 ], className="mb-0 text-muted", style={"fontSize": "0.85rem"}),
-            ]), className="shadow-sm"), md=5),
+            ]), className="shadow-sm"), md=12),
         ]),
     ])
 

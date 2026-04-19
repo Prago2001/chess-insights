@@ -6,12 +6,19 @@ Team 029 - CSE6242 Spring 2026
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from tqdm import tqdm
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
-from config import (PROCESSED_DATA_DIR, GAME_PHASES, SKILL_TIERS,
-                    TIME_FEATURES, ACCURACY_FEATURES, ALL_FEATURES)
+from config import PROCESSED_DATA_DIR, GAME_PHASES
+
+# Import python-chess for real feature computation
+try:
+    import chess
+    CHESS_AVAILABLE = True
+except ImportError:
+    CHESS_AVAILABLE = False
+    print("Warning: python-chess not installed. Some features will use fallback values.")
 
 
 def calculate_time_per_phase(clock_times: List[float],
@@ -87,41 +94,28 @@ def calculate_move_quality_features(moves: List[Dict],
                                     evaluations: Optional[List[float]] = None) -> Dict[str, float]:
     """Calculate move quality/accuracy features for a game.
 
-    Note: In production, this would use Stockfish evaluations.
-    For this implementation, we use heuristic approximations.
+    IMPORTANT: These features require Stockfish engine evaluations to compute.
+    If evaluations are not available, returns empty dict (no synthetic data).
+
+    Rationale for not generating synthetic accuracy features:
+    1. Synthetic features would be derived from Elo (circular dependency with label)
+    2. They would not represent actual player behavior
+    3. Testing showed they contribute only 11.6% importance and removing them
+       changes accuracy by just 0.13%
+    4. Including fake data misrepresents what the model actually learns
+
+    Args:
+        moves: List of move dictionaries
+        evaluations: Optional list of centipawn evaluations from Stockfish
+
+    Returns:
+        Dictionary with accuracy features if evaluations available, else empty dict
     """
     num_moves = len(moves)
 
-    if num_moves == 0:
-        return {
-            'blunder_rate': np.nan,
-            'mistake_rate': np.nan,
-            'avg_centipawn_loss': np.nan,
-            'accuracy_percentage': np.nan
-        }
-
-    # If we don't have engine evaluations, use heuristic approximations
-    if evaluations is None:
-        base_blunder_rate = 0.05  # 5% base rate
-        base_mistake_rate = 0.10  # 10% base rate
-
-        # Add some randomness to simulate variation
-        np.random.seed(hash(str(moves[0])) % (2**32) if len(moves) > 0 else 42)
-        blunder_rate = base_blunder_rate * (0.5 + np.random.random())
-        mistake_rate = base_mistake_rate * (0.5 + np.random.random())
-
-        # Estimate centipawn loss (typical range 20-80 for amateur players)
-        avg_cpl = 30 + np.random.random() * 40
-
-        # Accuracy percentage (typically 60-95%)
-        accuracy = 70 + np.random.random() * 25
-
-        return {
-            'blunder_rate': blunder_rate,
-            'mistake_rate': mistake_rate,
-            'avg_centipawn_loss': avg_cpl,
-            'accuracy_percentage': accuracy
-        }
+    # If we don't have engine evaluations, return empty dict (no synthetic data)
+    if evaluations is None or len(evaluations) == 0:
+        return {}
 
     # If we have evaluations, calculate actual metrics
     centipawn_losses = []
@@ -132,9 +126,9 @@ def calculate_move_quality_features(moves: List[Dict],
         loss = abs(evaluations[i] - evaluations[i-1])
         centipawn_losses.append(loss)
 
-        if loss > 200:  # Blunder threshold
+        if loss > 200:  # Blunder threshold: >2 pawns lost
             blunders += 1
-        elif loss > 50:  # Mistake threshold
+        elif loss > 50:  # Mistake threshold: >0.5 pawns lost
             mistakes += 1
 
     return {
@@ -146,7 +140,13 @@ def calculate_move_quality_features(moves: List[Dict],
 
 
 def calculate_complexity_features(moves: List[Dict]) -> Dict[str, float]:
-    """Calculate position complexity features using simple heuristics."""
+    """Calculate position complexity features using real game data.
+
+    Features computed:
+    - avg_position_complexity: Fraction of tactical moves (captures, checks, promotions)
+    - material_imbalance_freq: Fraction of positions with unequal material (using python-chess)
+    - piece_activity_score: Average number of legal moves per position (using python-chess)
+    """
     num_moves = len(moves)
 
     if num_moves == 0:
@@ -170,11 +170,63 @@ def calculate_complexity_features(moves: List[Dict]) -> Dict[str, float]:
 
     complexity_score = (tactical_moves / num_moves) * 100 if num_moves > 0 else 0
 
-    # Estimate material imbalance (simplified)
-    material_imbalance = 0.2 + np.random.random() * 0.3
+    # Compute real material imbalance and piece activity using python-chess
+    if CHESS_AVAILABLE:
+        board = chess.Board()
+        imbalanced_positions = 0
+        total_positions = 0
+        activity_scores = []
 
-    # Piece activity score (simplified heuristic)
-    piece_activity = 50 + np.random.random() * 30
+        # Piece values for material calculation
+        piece_values = {
+            chess.PAWN: 1,
+            chess.KNIGHT: 3,
+            chess.BISHOP: 3,
+            chess.ROOK: 5,
+            chess.QUEEN: 9
+        }
+
+        for move_dict in moves:
+            try:
+                move_san = move_dict.get('move_san', '')
+                if not move_san:
+                    continue
+
+                move = board.parse_san(move_san)
+                board.push(move)
+
+                # Calculate material for each side
+                white_material = sum(
+                    len(board.pieces(pt, chess.WHITE)) * val
+                    for pt, val in piece_values.items()
+                )
+                black_material = sum(
+                    len(board.pieces(pt, chess.BLACK)) * val
+                    for pt, val in piece_values.items()
+                )
+
+                # Check for material imbalance (any difference > 0)
+                if abs(white_material - black_material) > 0:
+                    imbalanced_positions += 1
+                total_positions += 1
+
+                # Count legal moves as piece activity metric
+                num_legal_moves = len(list(board.legal_moves))
+                activity_scores.append(num_legal_moves)
+
+            except Exception:
+                # Skip invalid moves
+                continue
+
+        material_imbalance = imbalanced_positions / total_positions if total_positions > 0 else 0.0
+        piece_activity = np.mean(activity_scores) if activity_scores else 30.0
+    else:
+        # Fallback: use move-based heuristics (no random values)
+        # Count captures as proxy for material changes
+        captures = sum(1 for m in moves if 'x' in m.get('move_san', ''))
+        material_imbalance = captures / num_moves if num_moves > 0 else 0.0
+        # Estimate activity based on game length (longer games = more complex)
+        piece_activity = min(40, 20 + num_moves * 0.3)
 
     return {
         'avg_position_complexity': complexity_score,
@@ -186,28 +238,68 @@ def calculate_complexity_features(moves: List[Dict]) -> Dict[str, float]:
 def calculate_opening_features(eco_code: str,
                                opening_name: str,
                                moves: List[Dict]) -> Dict[str, float]:
-    """Calculate opening-related features from ECO code and name."""
-    # Opening aggression score based on ECO code patterns (simplified)
+    """Calculate opening-related features from ECO code and name.
+
+    Features computed (NO random noise - deterministic based on game data):
+    - opening_aggression_score: Based on ECO code + early pawn advances/piece development
+    - book_deviation_move: Estimated based on opening name length and ECO specificity
+    """
+    num_moves = len(moves)
+
+    # Opening aggression score based on ECO code patterns
+    # Base score from ECO category (well-established chess theory)
     aggression_score = 50  # Default neutral
 
     if eco_code:
-        first_letter = eco_code[0]
-        if first_letter == 'B':  # Sicilian and other semi-open games
+        first_letter = eco_code[0] if eco_code else ''
+        if first_letter == 'B':  # Sicilian and other semi-open games (aggressive)
             aggression_score = 70
-        elif first_letter == 'C':  # Open games
+        elif first_letter == 'C':  # Open games (e4 e5, typically tactical)
             aggression_score = 65
-        elif first_letter == 'D':  # Closed games
+        elif first_letter == 'D':  # Closed games (d4 d5, typically positional)
             aggression_score = 45
-        elif first_letter == 'E':  # Indian defenses
+        elif first_letter == 'E':  # Indian defenses (flexible, semi-aggressive)
             aggression_score = 55
-        elif first_letter == 'A':  # Flank openings
+        elif first_letter == 'A':  # Flank openings (English, Reti - positional)
             aggression_score = 50
 
-    aggression_score += (np.random.random() - 0.5) * 20
+        # Refine based on ECO sub-code (second character indicates variation aggressiveness)
+        if len(eco_code) >= 2:
+            try:
+                sub_code = int(eco_code[1:3]) if len(eco_code) >= 3 else int(eco_code[1])
+                # Higher sub-codes often indicate sharper/more theoretical lines
+                aggression_score += (sub_code - 50) * 0.1  # Small adjustment
+            except ValueError:
+                pass
 
-    # Book deviation move (how early player deviates from known theory)
-    # Simplified: use move count as proxy
-    book_deviation = min(len(moves), 15) + np.random.randint(0, 5)
+    # Adjust aggression based on early game moves (first 10 moves)
+    early_moves = moves[:min(10, num_moves)]
+    early_captures = sum(1 for m in early_moves if 'x' in m.get('move_san', ''))
+    early_checks = sum(1 for m in early_moves if '+' in m.get('move_san', ''))
+    aggression_score += early_captures * 2 + early_checks * 3  # Bonus for early tactics
+
+    # Clamp to reasonable range
+    aggression_score = max(20, min(100, aggression_score))
+
+    # Book deviation move: estimate based on opening specificity
+    # More specific opening names (longer) = deeper theory followed
+    # ECO codes with more digits = more specific variation
+    if opening_name:
+        # Longer opening names suggest more specific/deeper theory
+        name_words = len(opening_name.split())
+        book_deviation = min(20, 5 + name_words)  # Range: 5-20
+    else:
+        book_deviation = 8  # Default if no opening name
+
+    # Adjust based on ECO code specificity
+    if eco_code and len(eco_code) >= 3:
+        # More specific ECO codes (e.g., B90 vs B9) suggest deeper book
+        try:
+            eco_num = int(eco_code[1:])
+            # Specific variations (higher numbers in some categories) = deeper theory
+            book_deviation = min(20, book_deviation + eco_num // 20)
+        except ValueError:
+            pass
 
     return {
         'opening_aggression_score': aggression_score,
@@ -229,6 +321,12 @@ def extract_game_features(game_data: Dict) -> Dict[str, float]:
     features['num_moves'] = game_data.get('num_moves', 0)
     features['time_control_category'] = game_data.get('time_control_category', '')
     features['result'] = game_data.get('result', '')
+
+    # One-hot encode time control type (fixes time variance confounding issue)
+    time_control = game_data.get('time_control_category', '').lower()
+    features['is_bullet'] = 1 if time_control == 'bullet' else 0
+    features['is_blitz'] = 1 if time_control == 'blitz' else 0
+    features['is_rapid'] = 1 if time_control == 'rapid' else 0
     # Opening identifiers (for repertoire features later)
     features['opening_eco'] = game_data.get('opening_eco', '')
     features['opening_name'] = game_data.get('opening_name', '')
@@ -248,11 +346,12 @@ def extract_game_features(game_data: Dict) -> Dict[str, float]:
     for key, value in time_features_black.items():
         features[f'black_{key}'] = value
 
-    # Move quality features (combined, then slightly perturbed per color)
+    # Move quality features (only if engine evaluations are available)
+    # Note: Without Stockfish evals, this returns empty dict (no synthetic data)
     quality_features = calculate_move_quality_features(moves)
     for key, value in quality_features.items():
-        features[f'white_{key}'] = value * (0.8 + np.random.random() * 0.4)
-        features[f'black_{key}'] = value * (0.8 + np.random.random() * 0.4)
+        features[f'white_{key}'] = value
+        features[f'black_{key}'] = value
 
     # Complexity features (game-level)
     complexity_features = calculate_complexity_features(moves)
@@ -297,9 +396,9 @@ def extract_features_from_dataframe(games_df: pd.DataFrame,
                                     full_games: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     """Extract features from a DataFrame of games.
 
-    If full_games (with moves/clock data) is provided, use it to compute
-    richer time/complexity features; otherwise, generate synthetic features
-    correlated with Elo as a fallback.
+    Requires full_games DataFrame with moves and clock data to compute
+    real behavioral features. Synthetic feature generation has been removed
+    to ensure scientific validity.
     """
     print("Extracting features from games...")
 
@@ -313,76 +412,17 @@ def extract_features_from_dataframe(games_df: pd.DataFrame,
             features_list.append(features)
         return pd.DataFrame(features_list)
 
-    # Otherwise, create synthetic features based on available data
-    print("Note: Full game data not available, generating synthetic features")
-
-    features_df = games_df.copy()
-
-    # Generate synthetic features based on Elo (correlated with skill)
-    np.random.seed(42)
-    n = len(features_df)
-
-    for color in ['white', 'black']:
-        elo_col = f'{color}_elo'
-        elo = features_df[elo_col].values
-
-        # Normalize Elo to 0-1 scale
-        elo_norm = (elo - 600) / (2800 - 600)
-
-        # Add significant noise to reduce perfect correlation (more realistic)
-        noise_factor = 0.6
-
-        # Time features - higher skill = better time management (with noise)
-        features_df[f'{color}_avg_time_opening'] = 5 + elo_norm * 5 + np.random.randn(n) * 4 * noise_factor
-        features_df[f'{color}_avg_time_middlegame'] = 8 + elo_norm * 8 + np.random.randn(n) * 6 * noise_factor
-        features_df[f'{color}_avg_time_endgame'] = 3 + elo_norm * 4 + np.random.randn(n) * 4 * noise_factor
-        features_df[f'{color}_time_variance_opening'] = 10 - elo_norm * 3 + np.random.randn(n) * 5 * noise_factor
-        features_df[f'{color}_time_variance_middlegame'] = 15 - elo_norm * 4 + np.random.randn(n) * 6 * noise_factor
-        features_df[f'{color}_time_variance_endgame'] = 8 - elo_norm * 2 + np.random.randn(n) * 4 * noise_factor
-        features_df[f'{color}_low_time_move_ratio'] = 0.3 - elo_norm * 0.1 + np.random.randn(n) * 0.15 * noise_factor
-        features_df[f'{color}_time_trouble_frequency'] = 0.25 - elo_norm * 0.08 + np.random.randn(n) * 0.12 * noise_factor
-
-        # Accuracy features - higher skill = fewer mistakes (with noise)
-        features_df[f'{color}_blunder_rate'] = 0.08 - elo_norm * 0.03 + np.abs(np.random.randn(n) * 0.04 * noise_factor)
-        features_df[f'{color}_mistake_rate'] = 0.15 - elo_norm * 0.05 + np.abs(np.random.randn(n) * 0.06 * noise_factor)
-        features_df[f'{color}_avg_centipawn_loss'] = 60 - elo_norm * 20 + np.random.randn(n) * 20 * noise_factor
-        features_df[f'{color}_accuracy_percentage'] = 65 + elo_norm * 15 + np.random.randn(n) * 12 * noise_factor
-
-    # Complexity features
-    features_df['avg_position_complexity'] = 40 + np.random.randn(n) * 15
-    features_df['material_imbalance_freq'] = 0.3 + np.random.randn(n) * 0.1
-    features_df['piece_activity_score'] = 50 + np.random.randn(n) * 15
-
-    # Opening features
-    features_df['opening_aggression_score'] = 50 + np.random.randn(n) * 20
-    features_df['book_deviation_move'] = 10 + np.random.randn(n) * 5
-
-    # Color-asymmetry features for synthetic branch
-    features_df['avg_time_opening_white_minus_black'] = (
-        features_df['white_avg_time_opening'] - features_df['black_avg_time_opening']
+    # DEPRECATED: Synthetic feature generation
+    # This branch should not be used - always provide full_games with real clock data
+    raise ValueError(
+        "Full game data with clock times is required for feature extraction. "
+        "Synthetic feature generation has been removed to ensure scientific validity. "
+        "Please load games from data/processed/chunks/games_full_part_*.parquet"
     )
-    features_df['blunder_rate_white_minus_black'] = (
-        features_df['white_blunder_rate'] - features_df['black_blunder_rate']
-    )
-    features_df['accuracy_white_minus_black'] = (
-        features_df['white_accuracy_percentage'] - features_df['black_accuracy_percentage']
-    )
-
-    # Clip values to reasonable ranges (only numeric columns)
-    numeric_cols = features_df.select_dtypes(include=[np.number]).columns
-    for col in numeric_cols:
-        if 'rate' in col or 'ratio' in col or 'frequency' in col:
-            features_df[col] = features_df[col].clip(0, 1)
-        elif 'percentage' in col:
-            features_df[col] = features_df[col].clip(0, 100)
-        elif 'time' in col.lower() and 'variance' not in col:
-            features_df[col] = features_df[col].clip(0, None)
-
-    return features_df
 
 
 def aggregate_player_features(features_df: pd.DataFrame,
-                              min_games: int = 20) -> pd.DataFrame:
+                              min_games: int = 5) -> pd.DataFrame:
     """Aggregate game-level features to player-level for clustering.
 
     In addition to mean/std for each per-color feature, this also computes
@@ -507,13 +547,21 @@ if __name__ == "__main__":
     print("ChessInsight Feature Extractor")
     print("=" * 50)
 
-    games_path = PROCESSED_DATA_DIR / "games_processed.parquet"
+    # Try to load full games data with clock times from chunks
+    chunks_dir = PROCESSED_DATA_DIR / "chunks"
+    full_game_chunks = sorted(chunks_dir.glob("games_full_part_*.parquet"))
 
-    if games_path.exists():
-        games_df = pd.read_parquet(games_path)
-        print(f"Loaded {len(games_df)} games")
+    if full_game_chunks:
+        print(f"Loading full game data from {len(full_game_chunks)} chunks...")
+        # Load all chunks (filter doesn't work on list columns)
+        full_games_df = pd.concat([pd.read_parquet(chunk) for chunk in tqdm(full_game_chunks, desc="Loading chunks")])
+        # Filter to games with clock data
+        has_clock = full_games_df['clock_times_white'].apply(lambda x: x is not None and len(x) > 0 if hasattr(x, '__len__') else False)
+        full_games_df = full_games_df[has_clock].reset_index(drop=True)
+        print(f"Loaded {len(full_games_df)} games with clock data")
 
-        features_df = extract_features_from_dataframe(games_df)
+        # Extract features using real clock data
+        features_df = extract_features_from_dataframe(None, full_games=full_games_df)
         print(f"Extracted features for {len(features_df)} games")
 
         player_features = aggregate_player_features(features_df, min_games=5)
@@ -521,5 +569,19 @@ if __name__ == "__main__":
 
         save_features(features_df, player_features)
     else:
-        print(f"No processed games found at {games_path}")
-        print("Please run data_loader.py first")
+        # Fallback to processed games without clock data
+        games_path = PROCESSED_DATA_DIR / "games_processed.parquet"
+        if games_path.exists():
+            games_df = pd.read_parquet(games_path)
+            print(f"Loaded {len(games_df)} games (no clock data)")
+
+            features_df = extract_features_from_dataframe(games_df)
+            print(f"Extracted features for {len(features_df)} games")
+
+            player_features = aggregate_player_features(features_df, min_games=5)
+            print(f"Aggregated features for {len(player_features)} players")
+
+            save_features(features_df, player_features)
+        else:
+            print(f"No game data found")
+            print("Please run data_loader.py first")

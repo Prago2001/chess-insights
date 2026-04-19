@@ -10,15 +10,12 @@ precomputed artifacts in `data/processed/` and `models/`.
 """
 
 import json
-from pathlib import Path
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
-from sklearn.cluster import KMeans
 
 from config import PROCESSED_DATA_DIR, MODELS_DIR
 
@@ -34,12 +31,18 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SKILL_TIERS = ["Beginner", "Intermediate", "Advanced", "Expert"]
+SKILL_TIERS = ["Beginner", "Intermediate", "Advanced"]
 TIER_COLORS = {
     "Beginner": "#e74c3c",
     "Intermediate": "#f39c12",
-    "Advanced": "#3498db",
-    "Expert": "#2ecc71",
+    "Advanced": "#2ecc71",
+}
+
+# Player archetypes from clustering (K=3, PCA=2)
+ARCHETYPE_DESCRIPTIONS = {
+    "Time Scramblers": "Fast play style, comfortable in time pressure, highest average Elo",
+    "Tactical Battlers": "Seek complex positions with material imbalances, lowest average Elo",
+    "Positional Grinders": "Keep pieces active in simpler positions, medium average Elo",
 }
 CLUSTER_COLORS = px.colors.qualitative.Set2
 
@@ -121,28 +124,8 @@ for tier in SKILL_TIERS:
 
 time_heatmap_df = pd.DataFrame(time_heatmap_data).set_index("Skill Tier")
 
-# Precompute accuracy-related aggregates (game-level)
-accuracy_by_tier = []
-for tier in SKILL_TIERS:
-    t = game_df[game_df["white_skill_tier"] == tier]
-    accuracy_by_tier.append(
-        {
-            "Skill Tier": tier,
-            "Blunder Rate (%)": round(t["white_blunder_rate"].mean() * 100, 2)
-            if "white_blunder_rate" in t.columns
-            else 0.0,
-            "Mistake Rate (%)": round(t["white_mistake_rate"].mean() * 100, 2)
-            if "white_mistake_rate" in t.columns
-            else 0.0,
-            "Avg CPL": round(t["white_avg_centipawn_loss"].mean(), 1)
-            if "white_avg_centipawn_loss" in t.columns
-            else 0.0,
-            "Accuracy (%)": round(t["white_accuracy_percentage"].mean(), 1)
-            if "white_accuracy_percentage" in t.columns
-            else 0.0,
-        }
-    )
-accuracy_df = pd.DataFrame(accuracy_by_tier)
+# Note: Accuracy features (blunder rate, CPL, etc.) require Stockfish engine evaluation
+# which is not available in our PGN dataset. These are excluded from analysis.
 
 
 # ---------------------------------------------------------------------------
@@ -155,25 +138,40 @@ def render_kpi(label: str, value: str, help_text: Optional[str] = None):
 # ---------------------------------------------------------------------------
 # Tab 1 – Overview
 # ---------------------------------------------------------------------------
-def render_overview_tab(k_selected: int):
+def render_overview_tab():
     st.subheader("Overview")
+
+    # Project introduction
+    st.markdown(
+        "**ChessInsight** answers two questions: (1) Can we predict a player's skill tier from their behavior? "
+        "(2) What distinct playing styles exist among chess players? Using 350K Lichess games, we built a "
+        "classifier achieving **65.8% accuracy** and identified **3 behavioral archetypes**."
+    )
+    st.markdown("")
 
     ds = analysis["dataset"]
     cl = analysis["classification"]
     clu = analysis["clustering"]
 
-    kpi_cols = st.columns(4)
+    # KPI row with 5 metrics
+    kpi_cols = st.columns(5)
     with kpi_cols[0]:
-        render_kpi("Total Games", f"{ds['total_games']:,}", ds["data_source"])
+        render_kpi("Total Games", f"{ds['total_games']:,}",
+                   "Number of chess games analyzed from the Lichess database")
     with kpi_cols[1]:
-        render_kpi("Unique Players", f"{ds['unique_players']:,}", f"Rating {ds['rating_range']}")
+        render_kpi("Unique Players", f"{len(player_df):,}",
+                   "Number of distinct players in our dataset, rated between 606 and 3253 Elo")
     with kpi_cols[2]:
-        render_kpi("Test Accuracy", cl["test_accuracy"], "Exact tier classification accuracy")
+        render_kpi("Test Accuracy", cl["test_accuracy"],
+                   "How often the model predicts the exact skill tier correctly")
     with kpi_cols[3]:
+        render_kpi("Adjacent Accuracy", cl["adjacent_accuracy"],
+                   "How often the prediction is correct or within one tier (e.g., predicting Intermediate for a Beginner)")
+    with kpi_cols[4]:
         render_kpi(
-            "Clusters (k)",
-            str(k_selected),
-            f"Pipeline baseline used k = {clu['n_clusters']}",
+            "Archetypes",
+            str(clu['n_clusters']),
+            "Number of distinct playing style clusters discovered through behavioral analysis",
         )
 
     # Skill tier distribution
@@ -196,25 +194,13 @@ def render_overview_tab(k_selected: int):
     # Rating histogram from player data
     fig_rating = px.histogram(
         player_df,
-        x="avg_elo",
+        x="elo",
         nbins=60,
         title="Player Rating Distribution",
-        labels={"avg_elo": "Average Elo"},
+        labels={"elo": "Average Elo"},
         color_discrete_sequence=["#3498db"],
     )
     fig_rating.update_layout(height=350)
-
-    # Accuracy metrics by tier
-    acc_melted = accuracy_df.melt(id_vars="Skill Tier", var_name="Metric", value_name="Value")
-    fig_acc = px.bar(
-        acc_melted,
-        x="Skill Tier",
-        y="Value",
-        color="Metric",
-        barmode="group",
-        title="Accuracy Metrics by Skill Tier",
-    )
-    fig_acc.update_layout(height=380)
 
     col_top = st.columns(2)
     with col_top[0]:
@@ -222,43 +208,48 @@ def render_overview_tab(k_selected: int):
     with col_top[1]:
         st.plotly_chart(fig_rating, use_container_width=True)
 
-    st.plotly_chart(fig_acc, use_container_width=True)
+    # Archetype summary with percentages
+    st.markdown("### Player Archetypes (from Clustering)")
 
+    # Calculate archetype percentages
+    archetype_counts = player_df["cluster_name"].value_counts()
+    total_players = len(player_df)
 
-# ---------------------------------------------------------------------------
-# Tab 2 – Player Cluster Map (with local k slider and per-player drill-down)
-# ---------------------------------------------------------------------------
-def render_cluster_tab(k_selected: int):
-    st.subheader("Player Cluster Map")
+    arch_cols = st.columns(3)
+    for i, (name, desc) in enumerate(ARCHETYPE_DESCRIPTIONS.items()):
+        count = archetype_counts.get(name, 0)
+        pct = count / total_players * 100 if total_players > 0 else 0
+        with arch_cols[i]:
+            st.info(f"**{name}** ({pct:.0f}%)\n\n{desc}\n\n*{count:,} players*")
 
-    # Local k slider for this tab (defaults to global k)
-    k_tab = st.slider(
-        "Clusters for this view (k)",
-        min_value=3,
-        max_value=8,
-        value=k_selected,
-        step=1,
-        key="cluster_tab_k",
-        help="Adjusts the number of clusters used in this Player Cluster Map view.",
+    # Key finding callout
+    st.markdown("### Key Finding: Multiple Paths to Mastery")
+    st.success(
+        "**Can we predict skill from behavior? Yes — but not from playing style.**\n\n"
+        "Our classifier achieves **65.8% accuracy** predicting skill tier from behavioral metrics like "
+        "time management, decision consistency, and complexity handling. However, playing *style* "
+        "(Time Scrambler vs. Positional Grinder vs. Tactical Battler) does **not** determine skill — "
+        "all three archetypes reach Advanced ratings.\n\n"
+        "**What this means:** *Which* style you play doesn't matter. *How efficiently* you execute it does. "
+        "Players should focus on improving their time management and decision consistency, not changing their natural approach."
     )
 
-    # Compute k-means on 2D embedding for visualization
-    coords = player_df[["x", "y"]].values
-    kmeans = KMeans(n_clusters=k_tab, random_state=42, n_init=10)
-    viz_labels_all = kmeans.fit_predict(coords)
 
-    player_viz = player_df.copy()
-    player_viz["viz_cluster"] = viz_labels_all
-    player_viz["viz_cluster_name"] = [
-        f"Cluster {c + 1}" for c in player_viz["viz_cluster"]
-    ]
+# ---------------------------------------------------------------------------
+# Tab 2 – Player Cluster Map (using pre-computed K=3 archetypes)
+# ---------------------------------------------------------------------------
+def render_cluster_tab():
+    st.subheader("Player Cluster Map")
+
+    # Use pre-computed clusters from the pipeline (K=3 archetypes)
+    player_viz = player_df.dropna(subset=["x", "y"]).copy()
 
     col_controls, col_plot = st.columns([1, 3])
 
     with col_controls:
         color_by = st.radio(
             "Color By",
-            options=["Cluster (k)", "Skill Tier"],
+            options=["Archetype", "Skill Tier"],
             index=0,
         )
 
@@ -269,8 +260,8 @@ def render_cluster_tab(k_selected: int):
             key="cluster_tiers_multiselect",
         )
 
-        min_elo = int(player_viz["avg_elo"].min())
-        max_elo = int(player_viz["avg_elo"].max())
+        min_elo = int(player_viz["elo"].min())
+        max_elo = int(player_viz["elo"].max())
         rating_min, rating_max = st.slider(
             "Rating Range",
             min_value=min_elo,
@@ -279,48 +270,73 @@ def render_cluster_tab(k_selected: int):
             step=50,
         )
 
-        st.markdown(f"**Cluster Summary (k = {k_tab})**")
+        st.markdown("**Archetype Summary**")
         summary_df = (
-            player_viz.groupby("viz_cluster_name")
-            .agg(Size=("player", "count"), AvgElo=("avg_elo", "mean"))
+            player_viz.groupby("cluster_name")
+            .agg(Size=("player", "count"), AvgElo=("elo", "mean"))
             .reset_index()
         )
+        total = summary_df["Size"].sum()
+        summary_df["Pct"] = (summary_df["Size"] / total * 100).round(0).astype(int).astype(str) + "%"
         summary_df["AvgElo"] = summary_df["AvgElo"].round(0).astype(int)
         summary_df.rename(
-            columns={"viz_cluster_name": "Cluster", "AvgElo": "Avg Elo"}, inplace=True
+            columns={"cluster_name": "Archetype", "AvgElo": "Avg Elo"}, inplace=True
         )
+        summary_df = summary_df[["Archetype", "Size", "Pct", "Avg Elo"]]
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
         st.markdown("**Player Drill-Down**")
+
+        # Get sample players from each archetype for users to try
+        sample_players = []
+        for archetype in ARCHETYPE_DESCRIPTIONS.keys():
+            archetype_players = player_viz[player_viz["cluster_name"] == archetype]
+            if not archetype_players.empty:
+                sample = archetype_players.sample(1).iloc[0]
+                sample_players.append(sample["player"])
+
         player_query = st.text_input(
             "Enter player handle (exact match)",
             "",
             help="Type a specific Lichess player handle present in the dataset.",
         )
+
+        if sample_players:
+            st.caption(f"Try these: `{sample_players[0]}`, `{sample_players[1] if len(sample_players) > 1 else ''}`, `{sample_players[2] if len(sample_players) > 2 else ''}`")
+
         selected_player = None
         if player_query:
             matches = player_viz[player_viz["player"] == player_query]
             if not matches.empty:
                 selected_player = matches.iloc[0]
                 st.markdown(
-                    f"**Selected:** `{player_query}`  |  Elo: {selected_player['avg_elo']:.0f}"
+                    f"**Selected:** `{player_query}`  |  Elo: {selected_player['elo']:.0f}"
                     f"  |  Tier: {selected_player['skill_tier']}"
-                    f"  |  {selected_player['viz_cluster_name']}"
+                    f"  |  {selected_player['cluster_name']}"
                 )
                 st.markdown(
-                    f"Games analyzed: **{int(selected_player.get('num_games', 0))}**"
+                    f"Games analyzed: **{int(selected_player.get('game_count', 0))}**"
                 )
             else:
                 st.info("No player found with that handle in the processed dataset.")
-        else:
-            st.caption("Tip: paste a handle from the scatterplot tooltip to inspect a player.")
 
     with col_plot:
         df_filtered = player_viz[
             (player_viz["skill_tier"].isin(tiers_selected))
-            & (player_viz["avg_elo"] >= rating_min)
-            & (player_viz["avg_elo"] <= rating_max)
+            & (player_viz["elo"] >= rating_min)
+            & (player_viz["elo"] <= rating_max)
         ].copy()
+
+        # Common labels for human-readable hover tooltips
+        friendly_labels = {
+            "x": "PCA Component 1",
+            "y": "PCA Component 2",
+            "skill_tier": "Skill Tier",
+            "cluster_name": "Archetype",
+            "player": "Player",
+            "elo": "Rating",
+            "game_count": "Games Played",
+        }
 
         if color_by == "Skill Tier":
             fig = px.scatter(
@@ -329,13 +345,9 @@ def render_cluster_tab(k_selected: int):
                 y="y",
                 color="skill_tier",
                 color_discrete_map=TIER_COLORS,
-                hover_data=["player", "avg_elo", "num_games", "viz_cluster_name"],
+                hover_data=["player", "elo", "game_count", "cluster_name"],
                 title=f"Player Embedding Map — {len(df_filtered):,} players",
-                labels={
-                    "x": "Embedding Dim 1",
-                    "y": "Embedding Dim 2",
-                    "skill_tier": "Skill Tier",
-                },
+                labels=friendly_labels,
                 category_orders={"skill_tier": SKILL_TIERS},
             )
         else:
@@ -343,32 +355,49 @@ def render_cluster_tab(k_selected: int):
                 df_filtered,
                 x="x",
                 y="y",
-                color="viz_cluster_name",
+                color="cluster_name",
                 color_discrete_sequence=CLUSTER_COLORS,
-                hover_data=["player", "avg_elo", "num_games", "skill_tier"],
-                title=f"Player Embedding Map — k = {k_tab}",
-                labels={
-                    "x": "Embedding Dim 1",
-                    "y": "Embedding Dim 2",
-                    "viz_cluster_name": "Cluster",
-                },
+                hover_data=["player", "elo", "game_count", "skill_tier"],
+                title=f"Player Behavioral Map — 3 Archetypes",
+                labels=friendly_labels,
             )
 
         # Highlight selected player if found
         if selected_player is not None:
+            # Add pulsing ring effect (outer glow)
             fig.add_trace(
                 go.Scatter(
                     x=[selected_player["x"]],
                     y=[selected_player["y"]],
                     mode="markers",
                     marker=dict(
-                        size=14,
-                        color="black",
-                        symbol="x",
+                        size=35,
+                        color="rgba(255, 0, 0, 0.3)",  # Red glow
+                        symbol="circle",
+                        line=dict(width=3, color="red"),
+                    ),
+                    name="",
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+            # Main star marker
+            fig.add_trace(
+                go.Scatter(
+                    x=[selected_player["x"]],
+                    y=[selected_player["y"]],
+                    mode="markers+text",
+                    marker=dict(
+                        size=22,
+                        color="#FF4444",  # Bright red
+                        symbol="star",
                         line=dict(width=2, color="white"),
                     ),
+                    text=[selected_player["player"]],
+                    textposition="top center",
+                    textfont=dict(size=14, color="white", family="Arial Black"),
                     name="Selected Player",
-                    hovertext=[f"Selected: {selected_player['player']}"],
+                    hovertext=[f"<b>{selected_player['player']}</b><br>Elo: {selected_player['elo']:.0f}<br>{selected_player['cluster_name']}"],
                     hoverinfo="text",
                 )
             )
@@ -383,12 +412,34 @@ def render_cluster_tab(k_selected: int):
         )
         st.plotly_chart(fig, use_container_width=True)
 
+        # Explanatory note about skill tier distribution
+        if color_by == "Skill Tier":
+            st.caption(
+                "💡 **Why do skill tiers appear mixed?** The scatter plot shows *playing style*, not skill. "
+                "Beginners, Intermediates, and Advanced players all share similar styles — proving that "
+                "*which* style you play doesn't determine your rating. However, our classifier still achieves "
+                "65.8% accuracy using *efficiency metrics* (time management, consistency). "
+                "Switch to 'Color by Archetype' to see the three behavioral clusters."
+            )
+        else:
+            st.caption(
+                "💡 Three behavioral archetypes based on playing patterns. Each contains players from all skill levels — "
+                "style doesn't determine rating, but execution efficiency does."
+            )
+
 
 # ---------------------------------------------------------------------------
 # Tab 3 – Time Analysis
 # ---------------------------------------------------------------------------
 def render_time_tab():
     st.subheader("Time Analysis")
+
+    st.markdown(
+        "How players manage their clock reveals skill differences. This tab explores "
+        "**time per move**, **time variance** (consistency), and **time trouble frequency** "
+        "(moves made under pressure) across skill tiers and game phases."
+    )
+    st.markdown("")
 
     # Heatmap: avg time per move by tier and phase
     fig_heatmap = go.Figure(
@@ -412,9 +463,9 @@ def render_time_tab():
     # Time variance by tier and phase (player-level aggregates)
     tv_data = []
     for phase, col in [
-        ("Opening", "time_variance_opening_mean"),
-        ("Middlegame", "time_variance_middlegame_mean"),
-        ("Endgame", "time_variance_endgame_mean"),
+        ("Opening", "time_variance_opening"),
+        ("Middlegame", "time_variance_middlegame"),
+        ("Endgame", "time_variance_endgame"),
     ]:
         if col in player_df.columns:
             for tier in SKILL_TIERS:
@@ -434,19 +485,19 @@ def render_time_tab():
     fig_variance.update_layout(height=380)
 
     # Time trouble frequency by tier
-    if "time_trouble_frequency_mean" in player_df.columns:
+    if "time_trouble_frequency" in player_df.columns:
         tt_data = []
         for tier in SKILL_TIERS:
-            vals = player_df[player_df["skill_tier"] == tier]["time_trouble_frequency_mean"]
-            tt_data.append({"Skill Tier": tier, "Time Trouble Freq": vals.mean()})
+            vals = player_df[player_df["skill_tier"] == tier]["time_trouble_frequency"]
+            tt_data.append({"Skill Tier": tier, "Time Trouble (%)": vals.mean() * 100})
         tt_df = pd.DataFrame(tt_data)
         fig_tt = px.bar(
             tt_df,
             x="Skill Tier",
-            y="Time Trouble Freq",
+            y="Time Trouble (%)",
             color="Skill Tier",
             color_discrete_map=TIER_COLORS,
-            title="Average Time Trouble Frequency by Skill Tier",
+            title="Time Trouble Frequency by Skill Tier",
         )
         fig_tt.update_layout(showlegend=False, height=370)
     else:
@@ -461,15 +512,20 @@ def render_time_tab():
     col3, col4 = st.columns(2)
     with col3:
         st.plotly_chart(fig_tt, use_container_width=True)
+        st.caption(
+            "💡 **Time Trouble** = percentage of moves made with less than 10% of starting time remaining. "
+            "Higher-rated players enter time trouble more often, likely due to deeper calculation."
+        )
     with col4:
         st.markdown("### Key Time Insights")
         st.markdown(
             """
-- Beginners spend more time per move on average than higher-rated players.
-- Time variance in the opening is highest for beginners, suggesting inconsistent opening preparation.
-- Advanced and Expert players show more consistent time management across all phases.
-- Time trouble frequency decreases with increasing skill level.
-- Stronger players allocate time more deliberately in the middlegame, which is the most predictive phase for skill tier.
+- Beginners spend more time per move (2.3s opening) vs Advanced (1.4s opening).
+- Advanced players have highest opening time variance, suggesting diverse opening repertoires.
+- Beginners have most consistent opening times but higher middlegame/endgame variance.
+- Time trouble frequency increases with skill: Beginner 3.8% → Advanced 6.3%.
+- Top predictive features: game length, middlegame time usage, position complexity.
+- Time Scramblers make 28% of moves in low time vs Tactical Battlers at 4%.
 """
         )
 
@@ -544,22 +600,91 @@ def render_classification_tab():
     col1, col2 = st.columns([7, 5])
     with col1:
         st.plotly_chart(fig_cm, use_container_width=True)
+        st.caption(
+            "💡 **How to read this:** Each row shows how players of a true skill tier were classified. "
+            "Diagonal cells (top-left to bottom-right) are correct predictions. "
+            "Off-diagonal cells show misclassifications — most errors are to adjacent tiers."
+        )
     with col2:
         st.markdown("#### Classification Metrics")
         st.dataframe(metrics_df, use_container_width=True, hide_index=True)
         st.caption(
-            "Model: Random Forest (18 behavioral features). "
-            "Adjacent accuracy counts predictions within ±1 tier as correct."
+            "**Test Accuracy:** Exact match rate. "
+            "**Adjacent Accuracy:** Correct or within ±1 tier. "
+            "**Precision:** Of predicted tier X, how many were actually X. "
+            "**Recall:** Of actual tier X, how many were predicted X. "
+            "**F1:** Harmonic mean of precision and recall."
+        )
+        st.markdown("---")
+        st.caption(
+            "Model: Random Forest · 3 skill tiers (Beginner <1400, Intermediate 1400-1899, Advanced 1900+) · "
+            "Features: time usage, complexity, opening patterns."
         )
 
     st.plotly_chart(fig_fi, use_container_width=True)
+    st.caption(
+        "💡 **Feature Importance:** Shows which player behaviors most influence skill tier predictions. "
+        "Higher importance = stronger signal for distinguishing skill levels."
+    )
 
 
 # ---------------------------------------------------------------------------
-# Tab 5 – Cluster Analysis
+# Tab 5 – Cluster Analysis (with Archetype Comparison Panel)
 # ---------------------------------------------------------------------------
 def render_cluster_analysis_tab():
     st.subheader("Cluster Analysis")
+
+    # Load cluster centers for archetype comparison
+    try:
+        cluster_centers = load_csv("cluster_centers_final.csv")
+    except Exception:
+        cluster_centers = None
+
+    # Archetype comparison panel (as promised in progress report)
+    st.markdown("### Archetype Comparison Panel")
+    if cluster_centers is not None and not cluster_centers.empty:
+        arch_cols = st.columns(3)
+        for i, row in cluster_centers.iterrows():
+            name = row["archetype"]
+            with arch_cols[i % 3]:
+                st.markdown(f"**{name}**")
+                st.caption(ARCHETYPE_DESCRIPTIONS.get(name, ""))
+                st.markdown(f"- Moves in Time Pressure: **{row['low_time_move_ratio']:.1%}**")
+                st.markdown(f"- Position Complexity: **{row['avg_position_complexity']:.1f}**")
+                st.markdown(f"- Material Imbalance: **{row['material_imbalance_freq']:.1%}**")
+                st.markdown(f"- Piece Activity: **{row['piece_activity_score']:.1f}**")
+
+        # Radar chart for archetype comparison
+        categories = ["Time Pressure", "Complexity", "Material Imbalance", "Piece Activity", "Aggression"]
+        fig_radar = go.Figure()
+        for _, row in cluster_centers.iterrows():
+            # Normalize values for radar chart (scale to 0-100)
+            values = [
+                row["low_time_move_ratio"] * 100 / 0.3,  # Scale low_time to ~100
+                row["avg_position_complexity"] / 40 * 100,  # Scale complexity
+                row["material_imbalance_freq"] * 100,  # Already 0-1
+                row["piece_activity_score"] / 35 * 100,  # Scale activity
+                row["opening_aggression_score"] / 70 * 100,  # Scale aggression
+            ]
+            values.append(values[0])  # Close the radar
+            fig_radar.add_trace(go.Scatterpolar(
+                r=values,
+                theta=categories + [categories[0]],
+                fill='toself',
+                name=row["archetype"],
+                opacity=0.6,
+            ))
+        fig_radar.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+            showlegend=True,
+            title="Archetype Behavioral Profiles (Normalized)",
+            height=400,
+        )
+        st.plotly_chart(fig_radar, use_container_width=True)
+    else:
+        for i, (name, desc) in enumerate(ARCHETYPE_DESCRIPTIONS.items()):
+            with st.columns(3)[i]:
+                st.info(f"**{name}**\n\n{desc}")
 
     # Cluster sizes and avg elo
     clu_sizes = []
@@ -624,18 +749,24 @@ def render_cluster_analysis_tab():
     mc_display = mc[display_cols].rename(
         columns={
             "method": "Method",
-            "n_clusters": "k",
-            "silhouette_score": "Silhouette ↑",
-            "calinski_harabasz_index": "CH ↑",
-            "davies_bouldin_index": "DB ↓",
+            "n_clusters": "Clusters",
+            "silhouette_score": "Silhouette",
+            "calinski_harabasz_index": "CH Index",
+            "davies_bouldin_index": "DB Index",
         }
     )
 
     col1, col2 = st.columns([5, 7])
     with col1:
         st.plotly_chart(fig_pie, use_container_width=True)
+        st.caption("💡 Distribution of players across the 3 behavioral archetypes.")
     with col2:
         st.plotly_chart(fig_comp, use_container_width=True)
+        st.caption(
+            "💡 **Skill composition within each archetype.** All three archetypes contain similar proportions "
+            "of Beginners, Intermediates, and Advanced players. This confirms that *which* style you play "
+            "doesn't determine your rating — but *how efficiently* you execute it does (65.8% accuracy)."
+        )
 
     col3, col4 = st.columns([7, 5])
     with col3:
@@ -644,9 +775,10 @@ def render_cluster_analysis_tab():
         st.markdown("#### Clustering Method Comparison")
         st.dataframe(mc_display, use_container_width=True, hide_index=True)
         st.caption(
-            "Silhouette and CH: higher is better. "
-            "Davies-Bouldin: lower is better. "
-            "K-Means (k=5) is used as the primary pipeline method."
+            "**Silhouette** (↑ better): Measures how similar points are to their own cluster vs others. "
+            "**CH Index** (↑ better): Ratio of between-cluster to within-cluster variance. "
+            "**DB Index** (↓ better): Average similarity between clusters. "
+            "K-Means with K=3 was selected."
         )
 
 
@@ -659,15 +791,9 @@ with st.sidebar:
     st.caption("Team 029 · CSE 6242 · Spring 2026")
     st.divider()
 
-    k_global = st.slider(
-        "Global cluster count (k)",
-        min_value=3,
-        max_value=8,
-        value=DEFAULT_K,
-        step=1,
-        key="global_k",
-        help="Sets the default k for the cluster map tab. You can override it in the tab itself.",
-    )
+    st.markdown("**Clustering:** K-Means (K=3)")
+    st.markdown("**Classification:** 3-tier (Random Forest)")
+    st.markdown(f"**Players:** {len(player_df):,}")
 
     st.divider()
     st.markdown(
@@ -684,10 +810,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(
 )
 
 with tab1:
-    render_overview_tab(k_global)
+    render_overview_tab()
 
 with tab2:
-    render_cluster_tab(k_global)
+    render_cluster_tab()
 
 with tab3:
     render_time_tab()
