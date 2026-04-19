@@ -52,7 +52,7 @@ While the interactive dashboard is not yet implemented, we have generated severa
 - 2D cluster embedding scatterplots and bar charts of cluster-level characteristics.
 - The dashboard layout will contain the following: a behavioral map, a control panel for filters, and linked detail views for time usage and blunder statistics.
 
-#### 5. Evaluation (Current Results and Planned Work)
+#### 5. Evaluation
 
 #### 5.1 Skill-Tier Classification Performance
 
@@ -71,8 +71,7 @@ We benchmarked k-means clustering against different clustering methods like Gaus
 
 #### 6.1 Summary of Progress
 Our goal for the first half of the semester was to build an analytical backend capable of processing chess game data and generating supervised and unsupervised skill models, which has been successfully achieved. Using 350,060 annotated Lichess games (Elo 600–3,265), we generated 30 player-level behavioral features for 22,725 players based on four dimensions from prior work: time allocation, position complexity and material dynamics, error rates, and opening tendencies.  
-**Progress against stated midterm targets:**
-We originally committed to a working classifier exceeding 50% accuracy and an initial clustering solution by the midpoint, with a final target of ≥65% accuracy and a complete interactive frontend by the semester's end. Our current standing against those goals is as follows:  
+**Progress against stated midterm targets:** We originally committed to a working classifier exceeding 50% accuracy and an initial clustering solution by the midpoint, with a final target of ≥65% accuracy and a complete interactive frontend by the semester's end. Our current standing against those goals is as follows:  
 **Data pipeline and feature extraction** are complete and reproducible. The full feature matrix is available at both game level (39 features) and player level (30 features).  
 **Skill-tier classification** using a Random Forest with 18 behavioral features achieves **42.6% exact-tier accuracy** and **55.6% adjacent-tier accuracy** (macro F1 = 0.425) on 49,345 test samples; although slightly below the 50% midterm target, the higher adjacent accuracy indicates errors mostly occur between neighboring tiers. To reach the **65% final goal**, we implemented a soft-voting ensemble model (XGBoost, Random Forest, Gradient Boosting) with interaction features, which is scheduled for evaluation in the next phase.  
 **Behavioral clustering** using k-means (k=5 on PCA-reduced features retaining 87.6% variance) identified five player archetypes (silhouette = 0.21, CH = 3440, DB = 1.35). A comparison across five algorithms showed Birch performed better (silhouette = 0.29, DB = 1.02), improving these metrics by 38% and 25%, so it will be adopted for the final clustering solution.
