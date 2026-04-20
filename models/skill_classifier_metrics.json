@@ -1,12 +1,12 @@
 {
   "model_type": "ensemble_soft",
   "metrics": {
-    "val_accuracy": 0.6592946802151823,
-    "test_accuracy": 0.6576509264793784,
-    "adjacent_accuracy": 0.8286013150029886,
-    "macro_precision": 0.6593076864424524,
-    "macro_recall": 0.6649085104046792,
-    "macro_f1": 0.6619440930833957
+    "val_accuracy": 0.6564554692169755,
+    "test_accuracy": 0.6564554692169755,
+    "adjacent_accuracy": 0.8278541542139869,
+    "macro_precision": 0.658355325085743,
+    "macro_recall": 0.663233728036694,
+    "macro_f1": 0.6606692940288431
   },
   "class_distribution": {
     "Intermediate": 20992,

@@ -2,28 +2,44 @@
   "method": "kmeans",
   "n_clusters": 3,
   "metrics": {
-    "silhouette_score": 0.3429930617125306,
-    "calinski_harabasz_index": 18930.769121499212,
-    "davies_bouldin_index": 1.5662422532794082
+    "silhouette_score": 0.34020586919425594,
+    "calinski_harabasz_index": 26563.601461625436,
+    "davies_bouldin_index": 0.9498740516923804,
+    "pca_explained_variance": 0.42586851899771927
   },
   "cluster_names": {
     "0": {
-      "name": "Positional Grinders",
-      "description": "Positional Grinders: 8946 players, avg Elo \u2248 1552, dominant tier Intermediate",
-      "size": 8946,
-      "avg_elo": 1551.6377201543303
-    },
-    "1": {
       "name": "Time Scramblers",
-      "description": "Time Scramblers: 30391 players, avg Elo \u2248 1707, dominant tier Intermediate",
-      "size": 30391,
-      "avg_elo": 1706.800166330315
+      "description": "Fast players who thrive under time pressure",
+      "characteristics": [
+        "Fast moves",
+        "High time pressure comfort",
+        "Highest skill level"
+      ],
+      "size": 17581,
+      "elo": 1748.0082533841742
     },
     "2": {
+      "name": "Positional Grinders",
+      "description": "Players who maintain active pieces in controlled positions",
+      "characteristics": [
+        "Active pieces",
+        "Simpler positions",
+        "Medium skill level"
+      ],
+      "size": 16177,
+      "elo": 1714.832950833706
+    },
+    "1": {
       "name": "Tactical Battlers",
-      "description": "Tactical Battlers: 5276 players, avg Elo \u2248 1500, dominant tier Beginner",
-      "size": 5276,
-      "avg_elo": 1500.4729183026295
+      "description": "Players who seek complex tactical positions",
+      "characteristics": [
+        "Complex positions",
+        "Material imbalances",
+        "Developing skills"
+      ],
+      "size": 10855,
+      "elo": 1399.9285368978242
     }
   }
 }

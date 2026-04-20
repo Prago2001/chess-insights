@@ -8,34 +8,24 @@ from pathlib import Path
 # Project paths
 PROJECT_ROOT = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data"
-RAW_DATA_DIR = DATA_DIR / "raw"
 PROCESSED_DATA_DIR = DATA_DIR / "processed"
 MODELS_DIR = PROJECT_ROOT / "models"
 VIZ_DIR = PROJECT_ROOT / "visualizations"
 
 # Ensure directories exist
-for dir_path in [RAW_DATA_DIR, PROCESSED_DATA_DIR, MODELS_DIR, VIZ_DIR]:
+for dir_path in [PROCESSED_DATA_DIR, MODELS_DIR, VIZ_DIR]:
     dir_path.mkdir(parents=True, exist_ok=True)
 
 # Data settings
-PGN_FILE_PATH = RAW_DATA_DIR / "data_1m_games.pgn"  # Path to the 1M games PGN file
-MIN_GAMES_PER_PLAYER = 5  # Minimum games for player-level classification
-SAMPLE_SIZE = 1000000  # Process up to 1M games from the PGN file
+MIN_GAMES_PER_PLAYER = 5  # Minimum total games (white + black combined) for player-level analysis
+DATA_SOURCE = "Lichess Database (pre-processed parquet chunks)"
 
 # Skill tier definitions (Elo ranges) - 3 tiers for player-level classification
-# Data-driven boundaries based on empirical testing (65.85% accuracy)
+# Data-driven boundaries achieving 65.6% accuracy, 82.8% adjacent accuracy
 SKILL_TIERS = {
     "Beginner": (0, 1400),       # Elo < 1400
     "Intermediate": (1400, 1900), # Elo 1400-1900
     "Advanced": (1900, 4000),     # Elo 1900+
-}
-
-# Legacy 4-tier definitions (kept for reference)
-SKILL_TIERS_4 = {
-    "Beginner": (0, 1200),
-    "Intermediate": (1200, 1600),
-    "Advanced": (1600, 2000),
-    "Expert": (2000, 4000),
 }
 
 # Game phase definitions (by move number)
@@ -88,7 +78,7 @@ TIME_FEATURES = [
 
 # Accuracy/error features - REMOVED FROM ACTIVE USE
 # These features require Stockfish engine evaluation data which is not available
-# in our PGN dataset. Generating synthetic versions creates circular dependency
+# in our dataset. Generating synthetic versions creates circular dependency
 # with Elo-based labels. Kept here for reference if real eval data becomes available.
 ACCURACY_FEATURES = [
     "blunder_rate",
@@ -125,3 +115,20 @@ OPENING_FEATURES = [
 ALL_FEATURES = (
     TIME_CONTROL_FEATURES + TIME_FEATURES + COMPLEXITY_FEATURES + OPENING_FEATURES
 )
+
+# Features used for behavioral clustering (K-Means k=3).
+# Mean-only style features — no std, no elo, no game_count. Matches the set
+# that produced the balanced archetype clusters documented in the final report.
+CLUSTERING_FEATURES = [
+    "avg_time_opening",
+    "avg_time_middlegame",
+    "avg_time_endgame",
+    "low_time_move_ratio",
+    "time_trouble_frequency",
+    "avg_position_complexity",
+    "material_imbalance_freq",
+    "piece_activity_score",
+    "opening_aggression_score",
+    "book_deviation_move",
+    "num_moves",
+]

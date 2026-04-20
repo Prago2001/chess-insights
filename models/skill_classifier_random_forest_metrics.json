@@ -1,20 +1,19 @@
 {
   "model_type": "random_forest",
   "metrics": {
-    "val_accuracy": 0.4236212489862125,
-    "test_accuracy": 0.42587185725871857,
-    "adjacent_accuracy": 0.5577453365774534,
-    "macro_precision": 0.4183250211720326,
-    "macro_recall": 0.44753065057270514,
-    "macro_f1": 0.42680133972173645
+    "val_accuracy": 0.6410639569635386,
+    "test_accuracy": 0.6434548714883442,
+    "adjacent_accuracy": 0.8241183502689778,
+    "macro_precision": 0.6446964599072394,
+    "macro_recall": 0.6514353046387716,
+    "macro_f1": 0.6477516491407188
   },
   "class_distribution": {
-    "Advanced": 124206,
-    "Intermediate": 95824,
-    "Expert": 66643,
-    "Beginner": 42126
+    "Intermediate": 20992,
+    "Advanced": 11957,
+    "Beginner": 11664
   },
-  "train_size": 230159,
-  "val_size": 49320,
-  "test_size": 49320
+  "train_size": 31229,
+  "val_size": 6692,
+  "test_size": 6692
 }

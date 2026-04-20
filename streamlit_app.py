@@ -125,7 +125,7 @@ for tier in SKILL_TIERS:
 time_heatmap_df = pd.DataFrame(time_heatmap_data).set_index("Skill Tier")
 
 # Note: Accuracy features (blunder rate, CPL, etc.) require Stockfish engine evaluation
-# which is not available in our PGN dataset. These are excluded from analysis.
+# which is not available in our dataset. These are excluded from analysis.
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ def render_overview_tab():
     st.markdown(
         "**ChessInsight** answers two questions: (1) Can we predict a player's skill tier from their behavior? "
         "(2) What distinct playing styles exist among chess players? Using 350K Lichess games, we built a "
-        "classifier achieving **65.8% accuracy** and identified **3 behavioral archetypes**."
+        "classifier achieving **65.6% accuracy** and identified **3 behavioral archetypes**."
     )
     st.markdown("")
 
@@ -194,10 +194,10 @@ def render_overview_tab():
     # Rating histogram from player data
     fig_rating = px.histogram(
         player_df,
-        x="elo",
+        x="avg_elo",
         nbins=60,
         title="Player Rating Distribution",
-        labels={"elo": "Average Elo"},
+        labels={"avg_elo": "Average Elo"},
         color_discrete_sequence=["#3498db"],
     )
     fig_rating.update_layout(height=350)
@@ -226,7 +226,7 @@ def render_overview_tab():
     st.markdown("### Key Finding: Multiple Paths to Mastery")
     st.success(
         "**Can we predict skill from behavior? Yes — but not from playing style.**\n\n"
-        "Our classifier achieves **65.8% accuracy** predicting skill tier from behavioral metrics like "
+        "Our classifier achieves **65.6% accuracy** predicting skill tier from behavioral metrics like "
         "time management, decision consistency, and complexity handling. However, playing *style* "
         "(Time Scrambler vs. Positional Grinder vs. Tactical Battler) does **not** determine skill — "
         "all three archetypes reach Advanced ratings.\n\n"
@@ -260,8 +260,8 @@ def render_cluster_tab():
             key="cluster_tiers_multiselect",
         )
 
-        min_elo = int(player_viz["elo"].min())
-        max_elo = int(player_viz["elo"].max())
+        min_elo = int(player_viz["avg_elo"].min())
+        max_elo = int(player_viz["avg_elo"].max())
         rating_min, rating_max = st.slider(
             "Rating Range",
             min_value=min_elo,
@@ -273,7 +273,7 @@ def render_cluster_tab():
         st.markdown("**Archetype Summary**")
         summary_df = (
             player_viz.groupby("cluster_name")
-            .agg(Size=("player", "count"), AvgElo=("elo", "mean"))
+            .agg(Size=("player", "count"), AvgElo=("avg_elo", "mean"))
             .reset_index()
         )
         total = summary_df["Size"].sum()
@@ -310,12 +310,12 @@ def render_cluster_tab():
             if not matches.empty:
                 selected_player = matches.iloc[0]
                 st.markdown(
-                    f"**Selected:** `{player_query}`  |  Elo: {selected_player['elo']:.0f}"
+                    f"**Selected:** `{player_query}`  |  Elo: {selected_player['avg_elo']:.0f}"
                     f"  |  Tier: {selected_player['skill_tier']}"
                     f"  |  {selected_player['cluster_name']}"
                 )
                 st.markdown(
-                    f"Games analyzed: **{int(selected_player.get('game_count', 0))}**"
+                    f"Games analyzed: **{int(selected_player.get('num_games', 0))}**"
                 )
             else:
                 st.info("No player found with that handle in the processed dataset.")
@@ -323,8 +323,8 @@ def render_cluster_tab():
     with col_plot:
         df_filtered = player_viz[
             (player_viz["skill_tier"].isin(tiers_selected))
-            & (player_viz["elo"] >= rating_min)
-            & (player_viz["elo"] <= rating_max)
+            & (player_viz["avg_elo"] >= rating_min)
+            & (player_viz["avg_elo"] <= rating_max)
         ].copy()
 
         # Common labels for human-readable hover tooltips
@@ -334,8 +334,8 @@ def render_cluster_tab():
             "skill_tier": "Skill Tier",
             "cluster_name": "Archetype",
             "player": "Player",
-            "elo": "Rating",
-            "game_count": "Games Played",
+            "avg_elo": "Rating",
+            "num_games": "Games Played",
         }
 
         if color_by == "Skill Tier":
@@ -345,7 +345,7 @@ def render_cluster_tab():
                 y="y",
                 color="skill_tier",
                 color_discrete_map=TIER_COLORS,
-                hover_data=["player", "elo", "game_count", "cluster_name"],
+                hover_data=["player", "avg_elo", "num_games", "cluster_name"],
                 title=f"Player Embedding Map — {len(df_filtered):,} players",
                 labels=friendly_labels,
                 category_orders={"skill_tier": SKILL_TIERS},
@@ -357,7 +357,7 @@ def render_cluster_tab():
                 y="y",
                 color="cluster_name",
                 color_discrete_sequence=CLUSTER_COLORS,
-                hover_data=["player", "elo", "game_count", "skill_tier"],
+                hover_data=["player", "avg_elo", "num_games", "skill_tier"],
                 title=f"Player Behavioral Map — 3 Archetypes",
                 labels=friendly_labels,
             )
@@ -397,7 +397,7 @@ def render_cluster_tab():
                     textposition="top center",
                     textfont=dict(size=14, color="white", family="Arial Black"),
                     name="Selected Player",
-                    hovertext=[f"<b>{selected_player['player']}</b><br>Elo: {selected_player['elo']:.0f}<br>{selected_player['cluster_name']}"],
+                    hovertext=[f"<b>{selected_player['player']}</b><br>Elo: {selected_player['avg_elo']:.0f}<br>{selected_player['cluster_name']}"],
                     hoverinfo="text",
                 )
             )
@@ -418,7 +418,7 @@ def render_cluster_tab():
                 "💡 **Why do skill tiers appear mixed?** The scatter plot shows *playing style*, not skill. "
                 "Beginners, Intermediates, and Advanced players all share similar styles — proving that "
                 "*which* style you play doesn't determine your rating. However, our classifier still achieves "
-                "65.8% accuracy using *efficiency metrics* (time management, consistency). "
+                "65.6% accuracy using *efficiency metrics* (time management, consistency). "
                 "Switch to 'Color by Archetype' to see the three behavioral clusters."
             )
         else:
@@ -520,12 +520,12 @@ def render_time_tab():
         st.markdown("### Key Time Insights")
         st.markdown(
             """
-- Beginners spend more time per move (2.3s opening) vs Advanced (1.4s opening).
+- Beginners spend more time per move (~2.1s opening) vs Advanced (~1.3s opening).
 - Advanced players have highest opening time variance, suggesting diverse opening repertoires.
 - Beginners have most consistent opening times but higher middlegame/endgame variance.
 - Time trouble frequency increases with skill: Beginner 3.8% → Advanced 6.3%.
 - Top predictive features: game length, middlegame time usage, position complexity.
-- Time Scramblers make 28% of moves in low time vs Tactical Battlers at 4%.
+- Time Scramblers make ~24% of moves in low time vs Tactical Battlers at ~3%.
 """
         )
 
@@ -568,7 +568,7 @@ def render_classification_tab():
         orientation="h",
         color="importance",
         color_continuous_scale="Viridis",
-        title="Top 15 Feature Importances (Random Forest)",
+        title="Top 15 Feature Importances (Ensemble)",
         labels={"importance": "Importance", "feature_clean": "Feature"},
     )
     fig_fi.update_layout(
@@ -617,7 +617,7 @@ def render_classification_tab():
         )
         st.markdown("---")
         st.caption(
-            "Model: Random Forest · 3 skill tiers (Beginner <1400, Intermediate 1400-1899, Advanced 1900+) · "
+            "Model: Ensemble (RF+XGBoost) · 3 skill tiers (Beginner <1400, Intermediate 1400-1899, Advanced 1900+) ·"
             "Features: time usage, complexity, opening patterns."
         )
 
@@ -690,7 +690,7 @@ def render_cluster_analysis_tab():
     clu_sizes = []
     for cid, info in clustering_results["cluster_names"].items():
         clu_sizes.append(
-            {"Archetype": info["name"], "Size": info["size"], "Avg Elo": round(info["avg_elo"])}
+            {"Archetype": info["name"], "Size": info["size"], "Avg Elo": round(info.get("avg_elo", info.get("elo", 0)))}
         )
     clu_df = pd.DataFrame(clu_sizes)
 
@@ -765,7 +765,7 @@ def render_cluster_analysis_tab():
         st.caption(
             "💡 **Skill composition within each archetype.** All three archetypes contain similar proportions "
             "of Beginners, Intermediates, and Advanced players. This confirms that *which* style you play "
-            "doesn't determine your rating — but *how efficiently* you execute it does (65.8% accuracy)."
+            "doesn't determine your rating — but *how efficiently* you execute it does (65.6% accuracy)."
         )
 
     col3, col4 = st.columns([7, 5])
@@ -792,7 +792,7 @@ with st.sidebar:
     st.divider()
 
     st.markdown("**Clustering:** K-Means (K=3)")
-    st.markdown("**Classification:** 3-tier (Random Forest)")
+    st.markdown("**Classification:** 3-tier (Ensemble)")
     st.markdown(f"**Players:** {len(player_df):,}")
 
     st.divider()

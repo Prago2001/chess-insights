@@ -1,20 +1,19 @@
 {
   "model_type": "ensemble_soft",
   "metrics": {
-    "val_accuracy": 0.4373479318734793,
-    "test_accuracy": 0.43830089213300893,
-    "adjacent_accuracy": 0.5549675587996756,
-    "macro_precision": 0.4304213811593257,
-    "macro_recall": 0.44692572140186687,
-    "macro_f1": 0.4352921414283705
+    "val_accuracy": 0.6564554692169755,
+    "test_accuracy": 0.6564554692169755,
+    "adjacent_accuracy": 0.8278541542139869,
+    "macro_precision": 0.658355325085743,
+    "macro_recall": 0.663233728036694,
+    "macro_f1": 0.6606692940288431
   },
   "class_distribution": {
-    "Advanced": 124206,
-    "Intermediate": 95824,
-    "Expert": 66643,
-    "Beginner": 42126
+    "Intermediate": 20992,
+    "Advanced": 11957,
+    "Beginner": 11664
   },
-  "train_size": 230159,
-  "val_size": 49320,
-  "test_size": 49320
+  "train_size": 31229,
+  "val_size": 6692,
+  "test_size": 6692
 }

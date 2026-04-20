@@ -104,7 +104,7 @@ for tier in SKILL_TIERS:
 time_heatmap_df = pd.DataFrame(time_heatmap_data).set_index("Skill Tier")
 
 # Note: Accuracy features (blunder rate, CPL, etc.) require Stockfish engine evaluation
-# which is not available in our PGN dataset. These are excluded from analysis.
+# which is not available in our dataset. These are excluded from analysis.
 
 # Free memory - we don't need the full game_df after precomputing
 del game_df
@@ -163,9 +163,9 @@ def build_overview_tab():
 
     # Rating histogram from player data
     fig_rating = px.histogram(
-        player_df, x="elo", nbins=60,
+        player_df, x="avg_elo", nbins=60,
         title="Player Rating Distribution",
-        labels={"elo": "Average Elo"},
+        labels={"avg_elo": "Average Elo"},
         color_discrete_sequence=["#3498db"],
     )
     fig_rating.update_layout(height=350)
@@ -217,10 +217,10 @@ def build_cluster_tab():
         html.H6("Rating Range", className="fw-bold"),
         dcc.RangeSlider(
             id="cluster-rating-slider",
-            min=int(player_df["elo"].min()),
-            max=int(player_df["elo"].max()),
+            min=int(player_df["avg_elo"].min()),
+            max=int(player_df["avg_elo"].max()),
             step=50,
-            value=[int(player_df["elo"].min()), int(player_df["elo"].max())],
+            value=[int(player_df["avg_elo"].min()), int(player_df["avg_elo"].max())],
             marks={v: str(v) for v in range(600, 3400, 400)},
             tooltip={"placement": "bottom", "always_visible": False},
         ),
@@ -249,15 +249,15 @@ def build_cluster_tab():
 def update_cluster_scatter(color_by, tiers, rating_range):
     df = player_df[
         (player_df["skill_tier"].isin(tiers))
-        & (player_df["elo"] >= rating_range[0])
-        & (player_df["elo"] <= rating_range[1])
+        & (player_df["avg_elo"] >= rating_range[0])
+        & (player_df["avg_elo"] <= rating_range[1])
     ].copy()
 
     if color_by == "skill_tier":
         fig = px.scatter(
             df, x="x", y="y", color="skill_tier",
             color_discrete_map=TIER_COLORS,
-            hover_data=["player", "elo", "game_count", "cluster_name"],
+            hover_data=["player", "avg_elo", "num_games", "cluster_name"],
             title=f"Player Embedding Map — {len(df):,} players",
             labels={"x": "PCA Component 1", "y": "PCA Component 2", "skill_tier": "Skill Tier"},
             category_orders={"skill_tier": SKILL_TIERS},
@@ -266,7 +266,7 @@ def update_cluster_scatter(color_by, tiers, rating_range):
         fig = px.scatter(
             df, x="x", y="y", color="cluster_name",
             color_discrete_sequence=CLUSTER_COLORS,
-            hover_data=["player", "elo", "game_count", "skill_tier"],
+            hover_data=["player", "avg_elo", "num_games", "skill_tier"],
             title=f"Player Embedding Map — {len(df):,} players",
             labels={"x": "PCA Component 1", "y": "PCA Component 2", "cluster_name": "Archetype"},
         )
@@ -363,7 +363,7 @@ def build_time_tab():
                     html.Li("Advanced players have highest opening time variance (diverse repertoires)."),
                     html.Li("Time trouble frequency increases with skill: Beginner 3.8% → Advanced 6.4%."),
                     html.Li("Top features: num_moves, avg_time_middlegame, position_complexity."),
-                    html.Li("Time Scramblers: 28% low-time moves vs Tactical Battlers: 4%."),
+                    html.Li("Time Scramblers play faster under pressure than Tactical Battlers."),
                 ], className="mb-0"),
             ]), className="shadow-sm h-100"), md=6),
         ]),
@@ -397,7 +397,7 @@ def build_classification_tab():
     fig_fi = px.bar(
         fi, x="importance", y="feature_clean", orientation="h",
         color="importance", color_continuous_scale="Viridis",
-        title="Top 15 Feature Importances (Random Forest)",
+        title="Top 15 Feature Importances (Ensemble)",
         labels={"importance": "Importance", "feature_clean": "Feature"},
     )
     fig_fi.update_layout(yaxis=dict(autorange="reversed"), height=450, coloraxis_showscale=False)
@@ -428,7 +428,7 @@ def build_classification_tab():
                 metrics_table,
                 html.Hr(),
                 html.P([
-                    html.Strong("Model: "), "Random Forest with 3 skill tiers",
+                    html.Strong("Model: "), "Ensemble (RF+XGBoost) with 3 skill tiers",
                 ], className="mb-1"),
                 html.P([
                     html.Strong("Tiers: "), "Beginner (<1400), Intermediate (1400-1899), Advanced (1900+)",
@@ -567,7 +567,7 @@ def build_cluster_analysis_tab():
                 method_table,
                 html.Hr(),
                 html.P([
-                    html.Strong("Selected: "), "K-Means (K=3) with PCA=2 — silhouette score 0.36, aligns with domain knowledge.",
+                    html.Strong("Selected: "), "K-Means (K=3) with PCA=2 and outlier removal — silhouette score 0.34, balanced clusters.",
                 ], className="mb-0 text-muted", style={"fontSize": "0.85rem"}),
             ]), className="shadow-sm"), md=12),
         ]),

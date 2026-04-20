@@ -425,18 +425,23 @@ def aggregate_player_features(features_df: pd.DataFrame,
                               min_games: int = 5) -> pd.DataFrame:
     """Aggregate game-level features to player-level for clustering.
 
-    In addition to mean/std for each per-color feature, this also computes
-    repertoire richness (unique openings, entropy) and accuracy volatility
-    metrics for White players, which are later averaged with Black-side
-    statistics when applicable.
+    Column naming convention matches original output:
+    - Mean values use feature name directly (e.g., 'avg_time_opening')
+    - Std values use '_std' suffix (e.g., 'avg_time_opening_std')
+    - Uses 'elo' and 'game_count' for compatibility with original
     """
     print("Aggregating features at player level...")
 
     player_features: List[Dict] = []
 
-    # Process white players
-    feature_cols = [c for c in features_df.columns if c.startswith('white_') and
-                    c not in ['white_player', 'white_skill_tier']]
+    # White player features (color-specific)
+    white_feature_cols = [c for c in features_df.columns if c.startswith('white_') and
+                          c not in ['white_player', 'white_skill_tier', 'white_elo']]
+
+    # Game-level features to aggregate (complexity, opening features, num_moves)
+    game_level_cols = ['avg_position_complexity', 'material_imbalance_freq',
+                       'piece_activity_score', 'opening_aggression_score',
+                       'book_deviation_move', 'num_moves']
 
     for player, group in features_df.groupby('white_player'):
         if len(group) < min_games:
@@ -444,41 +449,28 @@ def aggregate_player_features(features_df: pd.DataFrame,
 
         player_data: Dict[str, float] = {
             'player': player,
-            'num_games': len(group),
-            'avg_elo': group['white_elo'].mean(),
+            'game_count': len(group),
+            'elo': group['white_elo'].mean(),
             'skill_tier': group['white_skill_tier'].mode().iloc[0] if len(group) > 0 else 'Unknown'
         }
 
-        # Aggregate features (means/stds)
-        for col in feature_cols:
+        # Aggregate white-specific features (no _mean suffix, just feature name)
+        for col in white_feature_cols:
             clean_col = col.replace('white_', '')
-            player_data[f'{clean_col}_mean'] = group[col].mean()
+            player_data[clean_col] = group[col].mean()
             player_data[f'{clean_col}_std'] = group[col].std()
 
-        # Accuracy volatility & collapse fraction (White perspective)
-        if 'white_accuracy_percentage' in group.columns:
-            player_data['accuracy_percentage_std'] = group['white_accuracy_percentage'].std()
-            player_data['collapse_fraction'] = (
-                (group['white_accuracy_percentage'] < 70).mean()
-            )
-
-        # Opening repertoire richness based on ECO codes (White perspective)
-        if 'opening_eco' in group.columns:
-            ecos = group['opening_eco'].astype(str).fillna('')
-            families = ecos.str[0]
-            player_data['num_unique_openings'] = families.nunique()
-            freqs = families.value_counts(normalize=True)
-            if not freqs.empty:
-                entropy = -(freqs * np.log2(freqs + 1e-12)).sum()
-            else:
-                entropy = 0.0
-            player_data['opening_entropy'] = entropy
+        # Aggregate game-level features (complexity, opening, num_moves)
+        for col in game_level_cols:
+            if col in features_df.columns:
+                player_data[col] = group[col].mean()
+                player_data[f'{col}_std'] = group[col].std()
 
         player_features.append(player_data)
 
     # Process black players similarly and merge if player already exists
-    feature_cols = [c for c in features_df.columns if c.startswith('black_') and
-                    c not in ['black_player', 'black_skill_tier']]
+    black_feature_cols = [c for c in features_df.columns if c.startswith('black_') and
+                          c not in ['black_player', 'black_skill_tier', 'black_elo']]
 
     for player, group in features_df.groupby('black_player'):
         if len(group) < min_games:
@@ -487,47 +479,38 @@ def aggregate_player_features(features_df: pd.DataFrame,
         existing = [p for p in player_features if p['player'] == player]
         if existing:
             player_data = existing[0]
-            player_data['num_games'] += len(group)
+            player_data['game_count'] += len(group)
         else:
             player_data = {
                 'player': player,
-                'num_games': len(group),
-                'avg_elo': group['black_elo'].mean(),
+                'game_count': len(group),
+                'elo': group['black_elo'].mean(),
                 'skill_tier': group['black_skill_tier'].mode().iloc[0] if len(group) > 0 else 'Unknown'
             }
             player_features.append(player_data)
 
-        # Aggregate features
-        for col in feature_cols:
+        # Aggregate black-specific features
+        for col in black_feature_cols:
             clean_col = col.replace('black_', '')
-            mean_key = f'{clean_col}_mean'
-            std_key = f'{clean_col}_std'
 
-            if mean_key not in player_data:
-                player_data[mean_key] = group[col].mean()
-                player_data[std_key] = group[col].std()
+            if clean_col not in player_data:
+                player_data[clean_col] = group[col].mean()
+                player_data[f'{clean_col}_std'] = group[col].std()
             else:
-                player_data[mean_key] = (player_data[mean_key] + group[col].mean()) / 2
-                player_data[std_key] = (player_data[std_key] + group[col].std()) / 2
+                # Average with existing white-side data
+                player_data[clean_col] = (player_data[clean_col] + group[col].mean()) / 2
+                player_data[f'{clean_col}_std'] = (player_data[f'{clean_col}_std'] + group[col].std()) / 2
 
-        # Merge Black-side volatility metrics if available
-        if 'black_accuracy_percentage' in group.columns:
-            acc_std_black = group['black_accuracy_percentage'].std()
-            collapse_black = (group['black_accuracy_percentage'] < 70).mean()
-
-            if 'accuracy_percentage_std' not in player_data:
-                player_data['accuracy_percentage_std'] = acc_std_black
-            else:
-                player_data['accuracy_percentage_std'] = (
-                    player_data['accuracy_percentage_std'] + acc_std_black
-                ) / 2
-
-            if 'collapse_fraction' not in player_data:
-                player_data['collapse_fraction'] = collapse_black
-            else:
-                player_data['collapse_fraction'] = (
-                    player_data['collapse_fraction'] + collapse_black
-                ) / 2
+        # Aggregate game-level features for black players
+        for col in game_level_cols:
+            if col in features_df.columns:
+                if col not in player_data:
+                    player_data[col] = group[col].mean()
+                    player_data[f'{col}_std'] = group[col].std()
+                else:
+                    # Average with existing data
+                    player_data[col] = (player_data[col] + group[col].mean()) / 2
+                    player_data[f'{col}_std'] = (player_data[f'{col}_std'] + group[col].std()) / 2
 
     return pd.DataFrame(player_features)
 

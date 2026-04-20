@@ -26,23 +26,19 @@ from config import (
     VIZ_DIR,
     SKILL_TIERS,
     RANDOM_STATE,
-    SAMPLE_SIZE,
-    PGN_FILE_PATH,
+    DATA_SOURCE,
+    CLUSTERING_FEATURES,
 )
 
 from src.data_loader import (
-    parse_pgn_file,
-    create_games_dataframe,
+    load_chunks,
     get_dataset_stats,
-    split_dataframe_to_parquet_chunks,
 )
 from src.feature_extractor import (
     extract_features_from_dataframe,
-    aggregate_player_features,
-    save_features,
 )
 from src.classifier import (
-    prepare_classification_data,
+    prepare_player_level_data,
     train_classifier,
     save_model,
     print_results_summary,
@@ -67,73 +63,21 @@ from src.visualizations import (
 # Data loading helpers
 # ---------------------------------------------------------------------------
 
-def load_real_dataset(
-    pgn_path: Path = PGN_FILE_PATH,
-    n_games: int = SAMPLE_SIZE,
-    force_reload: bool = False,
-) -> tuple:
-    """Load real chess game data from a PGN file.
+def load_real_dataset() -> tuple:
+    """Load chess game data from pre-processed parquet chunks.
 
-    Data is stored and read as Parquet chunk files created by
-    load_or_create_dataset() in data_loader.py, located under:
+    Chunks are read from:
         PROCESSED_DATA_DIR / "chunks" / games_processed_part_XXXX.parquet
         PROCESSED_DATA_DIR / "chunks" / games_full_part_XXXX.parquet
     """
-    chunks_dir = PROCESSED_DATA_DIR / "chunks"
-    processed_chunks = sorted(chunks_dir.glob("games_processed_part_*.parquet"))
-    full_chunks = sorted(chunks_dir.glob("games_full_part_*.parquet"))
+    games_df, full_games_df = load_chunks()
 
-    # Load from existing chunks when available and reload is not forced
-    if processed_chunks and full_chunks and not force_reload:
-        print(
-            f"Loading cached dataset from {len(processed_chunks)} chunk(s) "
-            f"in {chunks_dir}"
-        )
-        games_df = pd.concat(
-            [pd.read_parquet(p) for p in processed_chunks], ignore_index=True
-        )
-        full_games_df = pd.concat(
-            [pd.read_parquet(p) for p in full_chunks], ignore_index=True
-        )
-        print(f"Loaded {len(games_df)} games from chunks")
-        return games_df, full_games_df
-
-    # Parse PGN file
-    if not pgn_path.exists():
-        print(f"ERROR: PGN file not found at {pgn_path}")
-        print("Please ensure data_1m_games.pgn is in the data/raw/ directory")
-        raise FileNotFoundError(f"PGN file not found: {pgn_path}")
-
-    print(f"Parsing {n_games} games from {pgn_path}...")
-    print("This may take several minutes for large datasets...")
-
-    from tqdm import tqdm
-
-    games_list = []
-    for game_data in tqdm(
-        parse_pgn_file(pgn_path, max_games=n_games), total=n_games, desc="Parsing games"
-    ):
-        games_list.append(game_data)
-
-    print(f"Successfully parsed {len(games_list)} valid games")
-
-    # Create DataFrames
-    games_df = create_games_dataframe(games_list)
-    full_games_df = pd.DataFrame(games_list)
-
-    # Print statistics
     stats = get_dataset_stats(games_df)
     print(f"\nDataset Statistics:")
     print(f"  Total games: {stats['total_games']:,}")
     print(f"  Unique white players: {stats['unique_white_players']:,}")
     print(f"  Unique black players: {stats['unique_black_players']:,}")
     print(f"  Rating range: {stats['rating_range'][0]} - {stats['rating_range'][1]}")
-    print(f"  Games with clock data: {stats['games_with_clock_data']:,}")
-
-    # Save as chunk files under PROCESSED_DATA_DIR / "chunks"
-    split_dataframe_to_parquet_chunks(games_df, PROCESSED_DATA_DIR, "games_processed")
-    split_dataframe_to_parquet_chunks(full_games_df, PROCESSED_DATA_DIR, "games_full")
-    print(f"\nCached processed data to {chunks_dir}")
 
     return games_df, full_games_df
 
@@ -218,9 +162,7 @@ def generate_synthetic_dataset(
 # Full pipeline
 # ---------------------------------------------------------------------------
 
-def run_full_pipeline(
-    n_games: int = SAMPLE_SIZE, use_real_data: bool = True, force_reload: bool = False
-):
+def run_full_pipeline(use_real_data: bool = True, n_synthetic_games: int = 50000):
     """Run the complete ChessInsight analysis pipeline."""
     print("=" * 70)
     print("CHESSINSIGHT - FULL ANALYSIS PIPELINE")
@@ -233,39 +175,56 @@ def run_full_pipeline(
     print("=" * 70)
 
     full_games_df = None
+    chunks_dir = PROCESSED_DATA_DIR / "chunks"
+    chunks_exist = chunks_dir.exists() and any(chunks_dir.glob("games_processed_part_*.parquet"))
+    game_features_path = PROCESSED_DATA_DIR / "game_features.parquet"
 
-    if use_real_data:
-        print(f"Loading real data from {PGN_FILE_PATH}")
-        games_df, full_games_df = load_real_dataset(
-            pgn_path=PGN_FILE_PATH, n_games=n_games, force_reload=force_reload
+    if use_real_data and chunks_exist:
+        games_df, full_games_df = load_real_dataset()
+        games_df.to_parquet(PROCESSED_DATA_DIR / "games_processed.parquet")
+        print(f"Saved games to {PROCESSED_DATA_DIR / 'games_processed.parquet'}")
+    elif use_real_data and game_features_path.exists():
+        print(
+            "No raw chunks found — running in cache-only mode using "
+            "pre-computed game_features.parquet.\n"
+            "Feature extraction will be skipped; classification, clustering, "
+            "visualizations, and summary will be regenerated from cache."
+        )
+        games_df = pd.read_parquet(game_features_path)
+        print(f"Loaded {len(games_df):,} cached game-level rows")
+    elif use_real_data:
+        raise FileNotFoundError(
+            f"Cannot run pipeline. Neither {chunks_dir} nor {game_features_path} "
+            "is present. Download the raw Lichess PGN data into data/raw/ and "
+            "regenerate chunks, or restore data/processed/game_features.parquet."
         )
     else:
         print("Using synthetic data (fallback mode)")
-        games_df = generate_synthetic_dataset(n_games=n_games)
-
-    # Save raw games snapshot
-    games_df.to_parquet(PROCESSED_DATA_DIR / "games_processed.parquet")
-    print(f"Saved games to {PROCESSED_DATA_DIR / 'games_processed.parquet'}")
+        games_df = generate_synthetic_dataset(n_games=n_synthetic_games)
+        games_df.to_parquet(PROCESSED_DATA_DIR / "games_processed.parquet")
 
     # Step 2: Feature Extraction
     print("\n" + "=" * 70)
     print("STEP 2: Feature Extraction")
     print("=" * 70)
 
-    features_df = extract_features_from_dataframe(games_df, full_games=full_games_df)
-    print(f"Extracted {len(features_df.columns)} features from {len(features_df)} games")
+    game_features_path = PROCESSED_DATA_DIR / "game_features.parquet"
 
-    player_features = aggregate_player_features(features_df, min_games=5)
-    print(f"Aggregated features for {len(player_features)} players")
-
-    save_features(features_df, player_features)
+    if game_features_path.exists():
+        print(f"Loading cached game features from {game_features_path}")
+        features_df = pd.read_parquet(game_features_path)
+        print(f"Loaded {len(features_df.columns)} features for {len(features_df)} games")
+    else:
+        features_df = extract_features_from_dataframe(games_df, full_games=full_games_df)
+        print(f"Extracted {len(features_df.columns)} features from {len(features_df)} games")
+        features_df.to_parquet(game_features_path)
 
     # Step 3: Skill Classification (multiple models)
     print("\n" + "=" * 70)
     print("STEP 3: Skill Tier Classification")
     print("=" * 70)
 
-    X, y = prepare_classification_data(features_df, target_color="white")
+    X, y, player_data = prepare_player_level_data(features_df)
     print(f"Classification data: {len(X)} samples, {len(X.columns)} features")
 
     model_types = ["random_forest", "xgboost", "ensemble_soft"]
@@ -302,7 +261,17 @@ def run_full_pipeline(
     print("STEP 4: Behavioral Clustering")
     print("=" * 70)
 
-    X_cluster, feature_cols = prepare_clustering_data(player_features)
+    # Restrict clustering to the 11 curated style features defined in config.
+    # Using the full mean+std feature set produces one degenerate cluster
+    # because a handful of extreme players dominate the PCA projection.
+    metadata_cols = ["player", "elo", "game_count", "skill_tier"]
+    keep_cols = [c for c in metadata_cols + CLUSTERING_FEATURES if c in player_data.columns]
+    missing = [c for c in CLUSTERING_FEATURES if c not in player_data.columns]
+    if missing:
+        print(f"WARNING: missing clustering features: {missing}")
+    cluster_input = player_data[keep_cols].reset_index(drop=True)
+
+    X_cluster, feature_cols = prepare_clustering_data(cluster_input)
     print(f"Clustering data: {len(X_cluster)} players, {len(feature_cols)} features")
 
     k_results = find_optimal_k(X_cluster.values, k_range=(2, 5))
@@ -320,29 +289,39 @@ def run_full_pipeline(
     if not method_comparison_df.empty:
         print(method_comparison_df.to_string(index=False))
 
-    if not method_comparison_df.empty:
-        method_sorted = method_comparison_df.sort_values(
-            ["silhouette_score", "davies_bouldin_index"], ascending=[False, True]
-        )
-        best_method = method_sorted.iloc[0]["method"]
-    else:
-        best_method = "kmeans"
+    # Always use K-Means for balanced, interpretable clusters
+    # (BIRCH may show higher silhouette but produces degenerate single-cluster results)
+    best_method = "kmeans"
 
-    print(f"\nSelected primary clustering method: {best_method} (k = {optimal_k})")
+    print(f"\nUsing K-Means clustering (k = {optimal_k})")
 
     clustering_results = perform_clustering(X_cluster, n_clusters=optimal_k, method=best_method)
 
     cluster_stats = analyze_clusters(
-        player_features, clustering_results["labels"], feature_cols
+        cluster_input, clustering_results["labels"], feature_cols
     )
     cluster_names = name_clusters(
-        cluster_stats, player_features, clustering_results["labels"]
+        cluster_stats, cluster_input, clustering_results["labels"]
     )
 
     print_clustering_summary(
         cluster_stats, cluster_names, clustering_results["metrics"]
     )
     save_clustering_results(clustering_results, cluster_stats, cluster_names)
+
+    # Write the canonical player_features.parquet consumed by the dashboard.
+    # Use the full per-player aggregate (all mean+std cols) so the dashboard
+    # has every column it references (time variance, std, etc.), but keep the
+    # row order aligned with the clustering embedding: clustering ran on the
+    # same 44,613 rows (cluster_input) in the same order as player_data.
+    dashboard_player_df = player_data.rename(
+        columns={"elo": "avg_elo", "game_count": "num_games"}
+    )
+    dashboard_player_df.to_parquet(PROCESSED_DATA_DIR / "player_features.parquet")
+    print(
+        f"Wrote dashboard player_features.parquet "
+        f"({len(dashboard_player_df)} players, {len(dashboard_player_df.columns)} columns)"
+    )
 
     # Step 5: Visualizations
     print("\n" + "=" * 70)
@@ -353,7 +332,7 @@ def run_full_pipeline(
 
     generate_all_visualizations(
         features_df,
-        player_features,
+        cluster_input,
         classification_results,
         clustering_results,
         cluster_stats,
@@ -365,22 +344,19 @@ def run_full_pipeline(
     print("ANALYSIS COMPLETE - SUMMARY")
     print("=" * 70)
 
-    data_source = (
-        f"Lichess Database ({PGN_FILE_PATH.name})" if use_real_data else "Synthetic data"
-    )
+    data_source = DATA_SOURCE if use_real_data else "Synthetic data"
 
     summary = {
         "dataset": {
             "total_games": len(games_df),
-            "unique_players": games_df["white_player"].nunique()
-            + games_df["black_player"].nunique(),
+            "unique_players": len(player_data),
             "rating_range": f"{games_df['white_elo'].min()} - {games_df['white_elo'].max()}",
             "data_source": data_source,
         },
         "features": {
             "game_level_features": len(features_df.columns),
-            "player_level_features": len(player_features.columns),
-            "players_analyzed": len(player_features),
+            "player_level_features": len(player_data.columns),
+            "players_analyzed": len(player_data),
         },
         "classification": {
             "model_type": classification_results["model_type"],
@@ -437,26 +413,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="ChessInsight Analysis Pipeline")
     parser.add_argument(
-        "--n-games",
-        type=int,
-        default=SAMPLE_SIZE,
-        help=f"Number of games to process (default: {SAMPLE_SIZE})",
-    )
-    parser.add_argument(
         "--synthetic",
         action="store_true",
-        help="Use synthetic data instead of real PGN data",
-    )
-    parser.add_argument(
-        "--force-reload",
-        action="store_true",
-        help="Force re-parsing of PGN file (ignore cache)",
+        help="Use synthetic data instead of the pre-processed chunks",
     )
 
     args = parser.parse_args()
 
-    summary = run_full_pipeline(
-        n_games=args.n_games,
-        use_real_data=not args.synthetic,
-        force_reload=args.force_reload,
-    )
+    summary = run_full_pipeline(use_real_data=not args.synthetic)
