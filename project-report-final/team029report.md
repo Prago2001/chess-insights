@@ -27,45 +27,41 @@ The visual interface will support tasks such as exploring where a player lives i
 
 #### 4. Proposed Method and Current Implementation
 
-Our proposed pipeline has the below mentioned four main components:
+In practice we run everything through a single driver script (`run_analysis.py`), which reloads cached game features when full PGN re-parsing is unnecessary, retrains the skill models, rebuilds clusters, refreshes plots, and drops the artifacts the dashboard expects—so a teammate can reproduce the full study without retracing manual steps.
 
 #### 4.1 Data Ingestion and Preprocessing
-We ingest a Lichess PGN file containing **350,060** games and parse moves and clock times for both players. We identify **238,200** unique player handles in the raw PGNs and aggregate per-player feature vectors for **22,725** players who have sufficient game history. The full pipeline runs on a laptop in under ten minutes using cached chunk-based parsing.
+Our working corpus is **350,060** rated Lichess games spanning **600–3,265** Elo. On machines without raw chunk files, we simply read the precomputed `game_features.parquet` and move straight to modeling. For player-level work we insist on at least **five** games per handle so that each profile is not dominated by a single lucky or awful outing; that filter leaves **44,613** players, with broader dataset context in Section 6.1.
 
 #### 4.2 Feature Extraction
-We extract **39 game-level features** and aggregate them to **30 player-level features** used by both the classifier and clustering modules. These include: 1) Average move times and time variance in opening, middlegame, and endgame; 2) Frequency of low-time moves and time-trouble episodes; 3) Engine-derived position complexity, centipawn loss, blunder and mistake rates; 4) Opening aggression, piece activity, and material imbalance frequencies.
+We start from **40** per-game signals—mostly clocks, phase timing, structural heuristics, and opening tendencies—and aggregate them into player-level summaries with a few simple engineered ratios (for example, how time is split across phases). The classifier sees **34** of those dimensions, chosen to capture how someone actually spends thinking time, how sharp or messy their typical positions are, and how adventurous their openings tend to be. Clustering deliberately uses a slimmer **11**-feature “playing style” slice (defined in `config.py`): mixing every correlated scale at once had produced one giant blob, so we keep the view that humans can still reason about.
 
 #### 4.3 Skill-Tier Classification
 
-We implement a **random forest classifier** that predicts four discrete skill tiers (Beginner, Intermediate, Advanced, Expert) from behavioral features. We construct a labeled dataset with **328,961** samples and **18** selected features, balanced across tiers using SMOTE in the training set. The data is split into **230,272** training, **49,344** validation, and **49,345** test samples. Class distribution before resampling is skewed toward Advanced and Intermediate players, but all four tiers are well represented. The fitted model, feature importance table, confusion matrix, and a summary of key metrics are saved for evaluation and reproducibility.
+Rather than treat rating as a continuous line, we bucket players into **three** tiers—Beginner (**Elo under 1400**), Intermediate (1400–1900), and Advanced (≥1900)—and ask the models to recover those buckets from behavior alone. After standardizing inputs, we oversample the training fold with **SMOTE** so rare tiers are not ignored, but we never touch validation or test data that way. We train a **Random Forest**, an **XGBoost** model, and a **soft-voting ensemble that averages only those two**; whichever wins on the held-out test set is written out as `skill_classifier.pkl` together with confusion matrices, feature importances, and the usual metric bundle. The stratified split gives **31,229** training players, **6,692** for validation, **6,692** for testing, with SMOTE expanding training rows to **44,082**.
 
 #### 4.4 Behavioral Clustering
-
-We aggregate player-level features and run behavioral clustering to discover archetypes by following these steps: 1) Standardize features and apply PCA to 10 components, which explain about 88% of variance in the current run; 2) Evaluate k in the range 3–7 with k-means using silhouette, Calinski–Harabasz, and Davies–Bouldin indices; k = 5 achieves the best silhouette score among the tested values; 3) Run final k-means with **k = 5**, then compute t-SNE embeddings for 2D visualization.
+Once the style matrix is imputed, we first run a small sanity sweep: k-means for **k = 2…5** on the raw **11**-dimensional style vectors to watch how silhouette and Calinski–Harabasz move. **k = 2** looks best on paper, but it mostly separates “stronger” from “weaker” without telling a rich story, so we settle on **k = 3** archetypes. Every clustering result we report in the paper—including comparisons to other algorithms—first **standardizes** those features, projects them through **two principal components (roughly 42.6% of the variance)**, and only then clusters in that compressed space. We try **k-means, hierarchical clustering, Gaussian mixtures, Birch, and DBSCAN** side by side; **k-means with k = 3** remains our default because it balances strong Calinski–Harabasz scores with a Davies–Bouldin index that suggests reasonably tight, separated blobs among the methods that do not collapse into noise. For the map people actually explore in the app, we compute a **UMAP** layout (falling back to t-SNE if UMAP is missing) so nearby points feel like similar habits, not arbitrary PCA axes.
 
 #### 4.5 Visualization Assets
-
-While the interactive dashboard is not yet implemented, we have generated several static visualizations that directly support the eventual UI:
-- Overall skill-tier distribution plots.
-- Time-usage heatmaps by game phase and tier.
-- Confusion matrix and feature-importance bar charts for the classifier.
-- 2D cluster embedding scatterplots and bar charts of cluster-level characteristics.
-- The dashboard layout will contain the following: a behavioral map, a control panel for filters, and linked detail views for time usage and blunder statistics.
+Alongside the Streamlit app, the pipeline writes a wireframe and a set of static figures—tier distributions, time-by-phase heatmaps, confusion matrices, importances, cluster portraits, and accuracy-by-tier charts—under `CODE/visualizations/`. The live dashboard simply reads `player_features.parquet`, the saved embeddings, and the model summaries from disk, which keeps interaction snappy even on a laptop. A fuller walkthrough of each tab appears in **Section 7.5**.
 
 #### 5. Evaluation
 
 #### 5.1 Skill-Tier Classification Performance
 
-The current random forest baseline achieves the following: 1) **Validation accuracy: approximately 42.3%**; 2) **Test accuracy:** **42.6%** (exact tier): 3) **Adjacent accuracy (±1 tier):** **55.6%**.; 4) **Macro F1:** approximately **0.425**.  
-Error analysis shows most mistakes occur between adjacent tiers (e.g., Intermediate vs. Advanced, Advanced vs. Expert), which is expected given fuzzy boundaries between skill levels. Beginners are recognized more reliably, with fewer predictions leaking into higher tiers.  
-**Planned evaluation work** : Compare random forests with gradient boosting (XGBoost or LightGBM) and possibly shallow neural networks using the same features. Add calibration curves and top-k tier accuracy to decrease  prediction uncertainty. Measure the impact of time-related features compared with engine-based accuracy measures.
+The three models land in the same ballpark on exact-tier accuracy, but the ensemble edges ahead on the metrics we care about most once tiers are this coarse:
+
+| Model | Val accuracy | Test accuracy | Adjacent (±1 tier) | Macro F1 |
+| --- | --- | --- | --- | --- |
+| Random Forest | 64.1% | 64.4% | 82.4% | 0.648 |
+| XGBoost | 65.7% | 65.0% | 82.4% | 0.655 |
+| Soft ensemble (RF + XGB) | 65.7% | **65.6%** | **82.8%** | **0.661** |
+
+Reading the confusion matrices is reassuring in a quiet way: when the model is wrong, it is usually **off by one tier**, not predicting a beginner from someone who plays like a titled player. **Intermediate** remains the slipperiest label because it sits between two worlds rating-wise, which matches how humans argue about “club player” versus “serious amateur” in real life. Section 7.2 walks through per-class recall and baselines in more detail. Looking ahead, we could still explore calibration or ablations, but the head-to-head between forests, boosting, and the ensemble is already settled for this feature set.
 
 #### 5.2 Clustering Quality and Interpretability
 
-The current k-means model with k = 5 yields: **Silhouette score: 0.21**, **Calinski–Harabasz index: 3440.3**, and **Davies–Bouldin index: 1.35**.  
-We observe several archetypal patterns, such as an **Intermediate Deliberate Player** cluster and multiple **Advanced Fast Player** clusters with slightly different Elo bands and sizes, capturing the trade-off between speed and deliberation at higher skill levels.  
-We benchmarked k-means clustering against different clustering methods like Gaussian Mixture Models, hierarchical clustering, DBSCAN, and Birch on the same feature matrix. From this comparison, **Birch** achieves the highest silhouette score (≈0.29) and the lowest Davies–Bouldin index (≈1.02), outperforming k-means on these internal metrics, while k-means attains the highest Calinski–Harabasz score. We keep k-means as the primary pipeline method for now because it is simple to understand, and treat Birch as a promising alternative to explore further in the final phase.  
-**Planned evaluation work** : 1) Use the comparison results and additional hyperparameter sweeps to decide whether Birch or another alternative offers better separation or interpretability than k-means. 2) Investigate cluster stability under resampling and feature perturbations. 3) Validate interpretability via qualitative inspection and, if time permits, informal user feedback from chess-playing classmates. 
+With **k-means (k = 3)** on the PCA-reduced style space we see a **silhouette near 0.34**, **Calinski–Harabasz near 26.6k**, and **Davies–Bouldin near 0.95**—modest silhouette, but the other indices suggest the partitions are not arbitrary. The three groups line up with the names we use in the interface: **Time Scramblers** (**17,581** players, average Elo **1748**) who live in the clock and still keep their rating up; **Tactical Battlers** (**10,855** players, **1400** average) who steer toward sharp, imbalanced fights; and **Positional Grinders** (**16,177** players, **1715** average) who prefer calmer, piece-active structures. Section 7.4 lays out the full algorithm horse race on the same representation; the **DBSCAN** line is worth a glance there—its silhouette looks almost too good until you notice how little global structure survives—so we treat it as a cautionary tale rather than a drop-in replacement. Classmates who tried the dashboard mostly reacted to these archetype stories; their comments are collected in **Section 7.6**.
 
 #### 6. Summary of Achievements and Reflections
 
