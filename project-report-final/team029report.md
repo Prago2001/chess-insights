@@ -10,7 +10,7 @@ ChessInsight aims to build an interactive visual analytics system that reveals h
 #### 2. Problem Definition
 
 We address two tightly coupled problems:
-1. **Behavior-aware skill inference.** Given a player's moves, clock times, and engine evaluations across many games, infer a discrete skill tier (Beginner, Intermediate, Advanced, Expert) that reflects *behavioral quality* rather than just rating [1](#ref-1), [2](#ref-2), [3](#ref-3).
+1. **Behavior-aware skill inference.** Given a player's moves, clock times, and engine evaluations across many games, infer a discrete skill tier (Beginner, Intermediate, Advanced) that reflects *behavioral quality* rather than just rating [1](#ref-1), [2](#ref-2), [3](#ref-3).
 2. **Discovery of behavioral archetypes.** Using aggregated behavioral features, cluster players into interpretable archetypes (for example, "time scramblers," "positional grinders") that help coaches and players understand common patterns and failure modes [7](#ref-7), [8](#ref-8).  
 Formally, we model each player as a vector of aggregated statistics over their games (time usage per phase, position complexity, error rates, opening style), and we learn: 1)A supervised mapping from features to skill tiers using Elo-derived labels; 2)An unsupervised mapping from features to behavioral clusters using k-means.  
 The visual interface will support tasks such as exploring where a player lives in the behavioral map, how their time usage compares to peers, and which archetypes correlate with faster improvement [14](#ref-14), [15](#ref-15).
@@ -50,11 +50,11 @@ Alongside the Streamlit app, the pipeline writes a wireframe and a set of static
 
 The three models land in the same ballpark on exact-tier accuracy, but the ensemble edges ahead on the metrics we care about most once tiers are this coarse:
 
-| Model | Val accuracy | Test accuracy | Adjacent (±1 tier) | Macro F1 |
-| --- | --- | --- | --- | --- |
-| Random Forest | 64.1% | 64.4% | 82.4% | 0.648 |
-| XGBoost | 65.7% | 65.0% | 82.4% | 0.655 |
-| Soft ensemble (RF + XGB) | 65.7% | **65.6%** | **82.8%** | **0.661** |
+| Model                    | Val accuracy | Test accuracy | Adjacent (±1 tier) | Macro F1  |
+| ------------------------ | ------------ | ------------- | ------------------ | --------- |
+| Random Forest            | 64.1%        | 64.4%         | 82.4%              | 0.648     |
+| XGBoost                  | 65.7%        | 65.0%         | 82.4%              | 0.655     |
+| Soft ensemble (RF + XGB) | 65.7%        | **65.6%**     | **82.8%**          | **0.661** |
 
 Reading the confusion matrices is reassuring in a quiet way: when the model is wrong, it is usually **off by one tier**, not predicting a beginner from someone who plays like a titled player. **Intermediate** remains the slipperiest label because it sits between two worlds rating-wise, which matches how humans argue about “club player” versus “serious amateur” in real life. Section 7.2 walks through per-class recall and baselines in more detail. Looking ahead, we could still explore calibration or ablations, but the head-to-head between forests, boosting, and the ensemble is already settled for this feature set.
 
@@ -84,11 +84,11 @@ By the end of the semester, we implemented the complete ChessInsight pipeline an
 #### 7.2 Final Classification Performance
 We evaluated three models on the held-out test set of **6,692** samples drawn from **44,613** players (those with ≥5 games), trained on 31,229 samples balanced to 44,082 via SMOTE across three tiers (Beginner, Intermediate, Advanced):
 
-| Model | Test Accuracy | Adjacent Accuracy (±1) | Macro F1 |
-|---|---|---|---|
-| Random Forest | **64.4%** | **82.4%** | **0.648** |
-| XGBoost | **65.0%** | **82.4%** | **0.655** |
-| Soft-voting Ensemble (RF + XGBoost + GB) | **65.6%** | **82.8%** | **0.661** |
+| Model                                    | Test Accuracy | Adjacent Accuracy (±1) | Macro F1  |
+| ---------------------------------------- | ------------- | ---------------------- | --------- |
+| Random Forest                            | **64.4%**     | **82.4%**              | **0.648** |
+| XGBoost                                  | **65.0%**     | **82.4%**              | **0.655** |
+| Soft-voting Ensemble (RF + XGBoost + GB) | **65.6%**     | **82.8%**              | **0.661** |
 
 The ensemble is the best-performing model and **meets the ≥65% accuracy target set in the proposal**. For context, a majority-class baseline (always predicting Intermediate) would achieve only 47.1% on this test set, so the ensemble represents a substantial 18-point improvement. Per-class recall from the ensemble confusion matrix is: Beginner 69.1%, Advanced 66.8%, Intermediate 63.1% — Intermediate is the hardest tier to classify because it borders both other classes. The majority of errors are between neighboring tiers (e.g., Intermediate vs. Advanced), confirming that the model’s mistakes are near decision boundaries rather than catastrophic cross-tier errors.
 
@@ -98,13 +98,13 @@ The strongest predictors in the ensemble are `num_moves` (9.9%), `avg_time_middl
 #### 7.4 Final Clustering and Player Archetypes
 We compared five clustering algorithms (k-means, hierarchical, DBSCAN, GMM, Birch) on the same PCA-reduced feature matrix (k=3, 2 PCA components explaining 42.6% variance). Results are summarized below:
 
-| Method | Silhouette | Calinski–Harabasz | Davies–Bouldin |
-|---|---|---|---|
-| **K-Means** | **0.340** | **26,564** | **0.950** |
-| Hierarchical | 0.290 | 20,926 | 1.045 |
-| GMM | 0.321 | 22,276 | 1.033 |
-| Birch | 0.240 | 13,220 | 1.159 |
-| DBSCAN | 0.658† | 339 | 3.142 |
+| Method       | Silhouette | Calinski–Harabasz | Davies–Bouldin |
+| ------------ | ---------- | ----------------- | -------------- |
+| **K-Means**  | **0.340**  | **26,564**        | **0.950**      |
+| Hierarchical | 0.290      | 20,926            | 1.045          |
+| GMM          | 0.321      | 22,276            | 1.033          |
+| Birch        | 0.240      | 13,220            | 1.159          |
+| DBSCAN       | 0.658†     | 339               | 3.142          |
 
 †DBSCAN’s high silhouette is driven by a large noise cluster; its very low CH and high DB indicate poor global separation.
 
