@@ -145,6 +145,8 @@ Promising next steps include adding longitudinal features (e.g., improvement tra
 #### 8.3 Effort Statement
 All team members contributed substantially and comparably to the final system and report. Nareshkumar and Shashankkumar focused primarily on data ingestion, feature engineering, and clustering; Pratik led the dashboard design and implementation; Maitreyi and Kartik focused on classification modeling, error analysis, and documentation. Overall, effort distribution has been balanced, and all members have collaborated closely on design decisions and revisions to the report.
 
+---
+
 #### References
 1. <a id="ref-1"></a> McIlroy-Young, R., et al. “Aligning Superhuman AI with Human Behavior: Chess as a Model System.” *KDD*, 2020. <https://www.cs.toronto.edu/~ashton/pubs/maia-kdd2020.pdf>  
 
