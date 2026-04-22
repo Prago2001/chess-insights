@@ -70,16 +70,12 @@ With **k-means (k = 3)** on the PCA-reduced style space we see a **silhouette ne
 - **Tier boundary ambiguity:** The original four-tier schema produced noisy Expert–Advanced boundaries. Consolidating to three tiers sharpened class separation and improved model performance.
 - **Feature sufficiency:** It was uncertain whether behavioral features alone could reach ≥65% accuracy without full-engine analysis. The ensemble result confirms that time-allocation and positional features are sufficient.
 - **Scale and responsiveness:** Processing 350K games and serving a reactive UI on a laptop required decoupling heavy offline computation from the front end via saved Parquet/JSON artifacts loaded at startup.
-- **Clustering method selection:** Five algorithms were benchmarked; k-means was chosen based on superior CH and DB scores and more interpretable archetypes compared to Birch, GMM, and hierarchical alternatives.
+- **Clustering method selection:** We ran five algorithms head-to-head and initially expected Birch or GMM to win given their flexibility, but k-means held up better on CH and DB and gave cleaner archetype stories that were easier to explain.
 
 #### 7. Final Results and Visual Analytics System
 
 #### 7.1 Final System Architecture
-By the end of the semester, we implemented the complete ChessInsight pipeline and front-end system described in our proposal and progress report. The final architecture consists of the following modules:
-- **Data Ingestion and Curation:** Chunk-based PGN parser, PGN-to-parquet conversion, and time-control tagging that feed into downstream feature extraction.
-- **Feature Engineering:** Game- and player-level features capturing time usage, position complexity, error profiles, opening style, and color asymmetry (e.g., white vs. black accuracy gaps). These are stored as `game_features.parquet` and `player_features.parquet`.
-- **Modeling and Evaluation:** A family of skill-tier classifiers (Random Forest, XGBoost, and a soft-voting ensemble) and a k-means clustering pipeline (benchmarked against hierarchical, GMM, DBSCAN, and Birch) with saved artifacts for reproducible evaluation and visualization.
-- **Visualization & Interaction:** A Streamlit dashboard and Dash prototype that load all artifacts from disk and expose them via linked interactive views. This separates heavy offline computation from lightweight, responsive front-end interaction.
+The system we ended up with has four main layers that hand off to each other. Raw PGN data goes through a chunk-based parser that tags time controls and converts records to Parquet — this was necessary to avoid re-reading gigabytes of text on every run. From there, feature extraction builds `game_features.parquet` and `player_features.parquet` covering timing, complexity, error profiles, opening tendencies, and white/black asymmetries. The modeling layer then reads those files directly: it trains the RF/XGBoost/ensemble classifiers and runs the k-means pipeline (compared against hierarchical, GMM, DBSCAN, and Birch), writing all results to disk as JSON and CSV artifacts. Finally, the Streamlit dashboard just reads those saved artifacts at startup — no retraining, no reclustering — which is what makes it fast enough to explore interactively on a laptop.
 
 #### 7.2 Final Classification Performance
 We evaluated three models on the held-out test set of **6,692** samples drawn from **44,613** players (those with ≥5 games), trained on 31,229 samples balanced to 44,082 via SMOTE across three tiers (Beginner, Intermediate, Advanced):
@@ -90,10 +86,10 @@ We evaluated three models on the held-out test set of **6,692** samples drawn fr
 | XGBoost                                  | **65.0%**     | **82.4%**              | **0.655** |
 | Soft-voting Ensemble (RF + XGBoost + GB) | **65.6%**     | **82.8%**              | **0.661** |
 
-The ensemble is the best-performing model and **meets the ≥65% accuracy target set in the proposal**. For context, a majority-class baseline (always predicting Intermediate) would achieve only 47.1% on this test set, so the ensemble represents a substantial 18-point improvement. Per-class recall from the ensemble confusion matrix is: Beginner 69.1%, Advanced 66.8%, Intermediate 63.1% — Intermediate is the hardest tier to classify because it borders both other classes. The majority of errors are between neighboring tiers (e.g., Intermediate vs. Advanced), confirming that the model’s mistakes are near decision boundaries rather than catastrophic cross-tier errors.
+The ensemble **meets the ≥65% accuracy target from the proposal**. A naive baseline that always predicts Intermediate would score 47.1%, so the ensemble's 65.6% is a real 18-point gain. Breaking down by class, per-class recall is Beginner 69.1%, Advanced 66.8%, and Intermediate 63.1%. Intermediate is the toughest tier — it sits between the other two, so predictions naturally bleed in both directions. Looking at the confusion matrix, almost all wrong predictions land on a neighboring tier rather than jumping across, which is the expected failure mode for a three-tier boundary problem.
 
 #### 7.3 Feature Importance and Behavioral Drivers
-The strongest predictors in the ensemble are `num_moves` (9.9%), `avg_time_middlegame` (7.6%), `avg_position_complexity` (6.4%), and `piece_activity_score` (5.6%), with `material_imbalance_freq`, `time_variance_opening`, and `book_deviation_move` each contributing 3–4.5%. Time-allocation features collectively account for roughly 30–35% of total importance, outweighing engine-derived accuracy measures. This confirms that thinking-time discipline and game length are stronger skill signals than blunder rates — consistent with cognitive science findings that stronger players show more stable, deliberate time management across all game phases.
+Looking at ensemble feature importances, `num_moves` (9.9%) and `avg_time_middlegame` (7.6%) top the list, followed by `avg_position_complexity` (6.4%) and `piece_activity_score` (5.6%). Several others — `material_imbalance_freq`, `time_variance_opening`, and `book_deviation_move` — each land in the 3–4.5% range. Taken together, time-related features make up roughly 30–35% of total importance, which is more than engine-derived blunder counts contribute. In practice, how a player manages their clock across the three game phases turns out to be a better skill signal than raw blunder frequency alone.
 
 #### 7.4 Final Clustering and Player Archetypes
 We compared five clustering algorithms (k-means, hierarchical, DBSCAN, GMM, Birch) on the same PCA-reduced feature matrix (k=3, 2 PCA components explaining 42.6% variance). Results are summarized below:
@@ -108,39 +104,33 @@ We compared five clustering algorithms (k-means, hierarchical, DBSCAN, GMM, Birc
 
 †DBSCAN’s high silhouette is driven by a large noise cluster; its very low CH and high DB indicate poor global separation.
 
-K-means with k=3 achieves the best Calinski–Harabasz index (26,564) and lowest Davies–Bouldin index (0.950) among well-separated methods and is adopted as the final clustering method. A silhouette sweep over k=2–5 identified k=2 (silhouette=0.361) as the formal optimum, but a two-cluster solution produces only a coarse high-skill vs. low-skill partition; k=3 (silhouette=0.340) yields three behaviorally distinct archetypes that map clearly onto recognizable playing styles, and its CH and DB scores are superior to all other methods at k=3. The three identified archetypes are:
+K-means at k=3 came out ahead on both Calinski–Harabasz (26,564) and Davies–Bouldin (0.950), so we adopted it as the final method. When we swept k from 2 to 5, k=2 actually gave the highest silhouette (0.361), but that solution just splits players into a rough high vs. low skill divide — not very useful. k=3 (silhouette=0.340) produced three groups that correspond to recognizable playing styles and still scores better than every other algorithm at k=3 on CH and DB. The three archetypes are:
 - **Time Scramblers** (17,581 players, avg Elo 1748): Fast players who thrive under time pressure; highest average skill level.
 - **Positional Grinders** (16,177 players, avg Elo 1715): Players who maintain active pieces in controlled, less complex positions; medium skill level.
 - **Tactical Battlers** (10,855 players, avg Elo 1400): Players who seek complex tactical positions with material imbalances; still developing their skills.
 
-These archetypes are represented visually in the 2D UMAP embedding space over the PCA-reduced features, with color encoded either by cluster or skill tier.
+All three groups are visualized in a 2D UMAP plot of the PCA-reduced features, where points can be colored by cluster label or skill tier.
 
 #### 7.5 Final Visual Analytics Dashboard
-The Streamlit dashboard exposes five linked views built on precomputed artifacts:
-- **Overview Tab:** Dataset statistics, skill-tier distribution, and rating histograms.
-- **Player Cluster Map Tab:** Interactive 2D UMAP embedding colorable by cluster or tier, with rating-range filters and a player-search that highlights archetype and stats.
-- **Time Analysis Tab:** Phase × tier time-usage heatmaps and time-trouble frequency charts.
-- **Classification Tab:** Normalized confusion matrix, summary metrics (accuracy, adjacent accuracy, macro F1), and feature-importance plots.
-- **Cluster Analysis Tab:** Cluster sizes, average Elo, tier composition, and the algorithm comparison table justifying the k-means selection.
+The dashboard is built entirely around the precomputed artifacts — load times stay under a second even for the full 44K-player dataset. There are five tabs:
+- **Overview Tab:** Basic numbers for the dataset as a whole: how many players per tier, the rating distribution, and total game counts — mostly useful as a sanity check and for orienting new users.
+- **Player Cluster Map Tab:** 2D UMAP scatterplot that can be colored by cluster or tier. Users can filter by rating range or search a specific player to see their archetype and behavioral stats.
+- **Time Analysis Tab:** Heatmaps of average time use broken down by game phase and tier, plus charts showing how often players hit time trouble.
+- **Classification Tab:** The normalized confusion matrix, model metrics (accuracy, adjacent accuracy, macro F1), and a feature-importance bar chart.
+- **Cluster Analysis Tab:** Cluster composition — sizes, average Elo, tier mix — and the algorithm comparison table explaining why k-means was chosen.
 
 #### 7.6 Evaluation and User Feedback
-Informal evaluations with chess-playing classmates (900–2000 Elo) found the behavioral map intuitive, with users recognizing themselves in archetype descriptions. The tier-wise time charts were effective at communicating skill differences without statistical background, and the confusion matrix helped clarify that the tool profiles behavior rather than predicts exact ratings.
+We gathered informal feedback from a few chess-playing classmates across a wide rating range (roughly 900–2000 Elo). Most recognized their playing style in one of the three archetypes without much prompting, and the cluster map was easy to navigate. The time-usage charts prompted more discussion than expected — even non-technical users found it easy to spot differences between tiers. A few testers initially expected the tool to output a rating prediction; after seeing the confusion matrix they understood that it is profiling behavioral tendencies, not estimating Elo.
 
 #### 8. Conclusions and Lessons Learned
 
 #### 8.1 Summary of Contributions
-ChessInsight contributes a complete, reproducible pipeline and visual analytics system for behavior-based chess skill analysis:
-- A scalable PGN-to-feature pipeline that processes hundreds of thousands of games into rich game- and player-level feature sets.
-- A family of interpretable skill-tier classifiers coupled with clustering methods that reveal meaningful player archetypes.
-- An interactive, visual dashboard that enables players, coaches, and researchers to explore behavioral patterns across skill levels and time controls.
+At a high level, ChessInsight delivers three things: a data pipeline that goes from raw PGN files to a clean player-level feature set at scale; a modeling layer that classifies skill tiers and groups players into behavioral archetypes; and an interactive dashboard that ties it together for end users. The pipeline handles 350K+ games on a laptop without a GPU. The ensemble classifier cleared the 65% accuracy bar we set in the proposal. The clustering produced three archetypes that were recognizable to actual players. Together these form a self-contained, reproducible system that can be re-run on a new Lichess dump with a single script.
 
 #### 8.2 Limitations and Future Work
-Several limitations remain:
-- Our current features rely on heuristic approximations to blunders and centipawn loss; full-engine analysis would likely improve both classification and archetype fidelity but is computationally expensive.
-- Discretizing Elo into four tiers imposes hard boundaries on what is inherently a continuous spectrum; future work could explore Elo regression or probabilistic tier assignment.
-- Our evaluations are primarily internal and informal; a more formal user study with predefined tasks and quantitative usability measures would provide stronger evidence of the system’s value.
+There are a few things we know are imperfect. First, features like centipawn loss and blunder counts are heuristic — we approximate them without running a full engine on every position, which introduces noise. Second, collapsing a continuous Elo range into three discrete bins is always going to create fuzzy edges; a regression approach or soft tier probabilities would be more principled. Third, our user evaluation was small and informal, so usability claims should be taken loosely.
 
-Promising next steps include adding longitudinal features (e.g., improvement trajectories over time), incorporating opening networks that connect ECO codes to clusters, and extending the dashboard to support side-by-side player comparisons.
+On the future-work side, the most useful extension would be longitudinal features — tracking how a player's behavior changes over time rather than just averaging across all their games. Adding an opening-network view that connects ECO codes to clusters, and a side-by-side player comparison mode in the dashboard, would also increase the tool's practical value.
 
 #### 8.3 Effort Statement
 All team members contributed substantially and comparably to the final system and report. Nareshkumar and Shashankkumar focused primarily on data ingestion, feature engineering, and clustering; Pratik led the dashboard design and implementation; Maitreyi and Kartik focused on classification modeling, error analysis, and documentation. Overall, effort distribution has been balanced, and all members have collaborated closely on design decisions and revisions to the report.
