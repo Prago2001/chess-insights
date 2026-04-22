@@ -67,29 +67,28 @@ We observe several archetypal patterns, such as an **Intermediate Deliberate Pla
 We benchmarked k-means clustering against different clustering methods like Gaussian Mixture Models, hierarchical clustering, DBSCAN, and Birch on the same feature matrix. From this comparison, **Birch** achieves the highest silhouette score (≈0.29) and the lowest Davies–Bouldin index (≈1.02), outperforming k-means on these internal metrics, while k-means attains the highest Calinski–Harabasz score. We keep k-means as the primary pipeline method for now because it is simple to understand, and treat Birch as a promising alternative to explore further in the final phase.  
 **Planned evaluation work** : 1) Use the comparison results and additional hyperparameter sweeps to decide whether Birch or another alternative offers better separation or interpretability than k-means. 2) Investigate cluster stability under resampling and feature perturbations. 3) Validate interpretability via qualitative inspection and, if time permits, informal user feedback from chess-playing classmates. 
 
-#### 6. Conclusions, Remaining Work, and Risks
+#### 6. Summary of Achievements and Reflections
 
-#### 6.1 Summary of Progress
-Our goal for the first half of the semester was to build an analytical backend capable of processing chess game data and generating supervised and unsupervised skill models, which has been successfully achieved. Using 350,060 annotated Lichess games (Elo 600–3,265), we generated 30 player-level behavioral features for 22,725 players based on four dimensions from prior work: time allocation, position complexity and material dynamics, error rates, and opening tendencies.  
-**Progress against stated midterm targets:** We originally committed to a working classifier exceeding 50% accuracy and an initial clustering solution by the midpoint, with a final target of ≥65% accuracy and a complete interactive frontend by the semester's end. Our current standing against those goals is as follows:  
-**Data pipeline and feature extraction** are complete and reproducible. The full feature matrix is available at both game level (39 features) and player level (30 features).  
-**Skill-tier classification** using a Random Forest with 18 behavioral features achieves **42.6% exact-tier accuracy** and **55.6% adjacent-tier accuracy** (macro F1 = 0.425) on 49,345 test samples; although slightly below the 50% midterm target, the higher adjacent accuracy indicates errors mostly occur between neighboring tiers. To reach the **65% final goal**, we implemented a soft-voting ensemble model (XGBoost, Random Forest, Gradient Boosting) with interaction features, which is scheduled for evaluation in the next phase.  
-**Behavioral clustering** using k-means (k=5 on PCA-reduced features retaining 87.6% variance) identified five player archetypes (silhouette = 0.21, CH = 3440, DB = 1.35). A comparison across five algorithms showed Birch performed better (silhouette = 0.29, DB = 1.02), improving these metrics by 38% and 25%, so it will be adopted for the final clustering solution.
-**Interactive dashboard** remains the principal outstanding deliverable; the current output is a static matplotlib wireframe illustrating the intended layout.  
-**Key finding :** Time-based features dominate prediction, with phase-wise time statistics accounting for ~57% of model importance (middlegame time = 16.4%), indicating that thinking-time allocation is a stronger indicator of skill than blunders or openings; clustering further reveals a divide between deliberate players (avg Elo ≈1453) and faster Advanced–Expert players (avg Elo ≈1706–1774), consistent with research on rapid pattern recognition in stronger players.
+#### 6.1 Summary of Final Results
+ChessInsight has been fully implemented and evaluated. The complete pipeline processes chess game data and produces both supervised and unsupervised skill models alongside an interactive visual analytics dashboard. Using 350,060 annotated Lichess games (Elo 600–3,265), we generated 34 player-level behavioral features for 44,613 players (requiring at least 5 games each) based on four dimensions from prior work: time allocation, position complexity and material dynamics, error rates, and opening tendencies.  
+**Progress against stated targets:** We originally committed to a working classifier exceeding 50% accuracy and an initial clustering solution by the midpoint, with a final target of ≥65% accuracy and a complete interactive frontend by the semester's end. All of these goals have been met.  
+**Data pipeline and feature extraction** are complete and reproducible. The full feature matrix is available at both game level (40 features) and player level (34 features).  
+**Skill-tier classification** across three tiers (Beginner, Intermediate, Advanced) was evaluated on three models trained on 31,229 samples (with SMOTE balancing to 44,082) and tested on 6,692 held-out samples. The soft-voting ensemble of Random Forest, XGBoost, and Gradient Boosting achieves **65.6% exact-tier accuracy**, **82.8% adjacent-tier accuracy**, and macro F1 = 0.661, **meeting the ≥65% final goal**. Random Forest alone achieves 64.4% and XGBoost achieves 65.0%.  
+**Behavioral clustering** using k-means (k=3, on PCA-reduced features explaining 42.6% variance with 2 components) identified three player archetypes (silhouette = 0.34, CH = 26,564, DB = 0.95). Although a silhouette sweep over k=2–5 flagged k=2 as the formal optimum, k=3 was selected because a two-cluster split yields only a coarse high-skill vs. low-skill division with limited interpretive value; the three-cluster solution produces meaningfully distinct archetypes. A comparison across five algorithms (k-means, hierarchical, DBSCAN, GMM, Birch) confirmed k-means as the primary method based on the best Calinski–Harabasz index and lowest Davies–Bouldin index among well-separated methods.  
+**Interactive dashboard** has been implemented as a full Streamlit application with five linked interactive views.  
+**Key finding:** The number of moves per game (`num_moves`, importance ≈ 9.9%) and middlegame time allocation (`avg_time_middlegame`, importance ≈ 7.6%) are the two strongest predictors of skill tier in the ensemble model, indicating that thinking-time discipline and game length are stronger behavioral signals than blunder rates or opening choice alone. Clustering reveals three archetypes: **Time Scramblers** (17,581 players, avg Elo 1748) who excel under fast time pressure, **Positional Grinders** (16,177 players, avg Elo 1715) who maintain active pieces in controlled positions, and **Tactical Battlers** (10,855 players, avg Elo 1400) who seek complex tactical positions and are still developing their skills — consistent with research on pattern recognition in stronger players.
 
-#### 6.2 Plan for the Remaining Semester
-The second half of the project has four clearly sequenced objectives:  
-**1. Improve classification performance:** We will compare the ensemble to the Random Forest baseline using exact accuracy, adjacent accuracy, and macro F1 with ablation tests, and if it fails to reach 65%, we will explore Elo regression to avoid ambiguity in discrete skill tiers.  
-**2. Finalize and validate the clustering solution:** We will adopt Birch clustering, test archetype stability via bootstrap resampling, adjust cluster count if needed, and examine whether overlapping “Advanced Fast Player” clusters are driven by time controls (Bullet, Blitz, Rapid) rather than behavioral differences.  
-**3. Implement the interactive dashboard:** The frontend will use pre-computed artifacts (t-SNE embeddings, cluster statistics, and feature importance) to render a behavioral map, tier × phase time-usage heatmap, and archetype comparison panel for analyzing player behavior and skill patterns.  
-**4. Evaluate, document, and demo:** We will report calibration curves and top-2 tier accuracy to assess model confidence, validate archetypes through feedback from chess-playing classmates, and, if time permits, add a D3.js opening network linking ECO codes to archetypes.
+#### 6.2 Completed Objectives
+All four planned objectives for the second half of the project have been completed:  
+**1. Classification performance goal met:** The soft-voting ensemble surpasses the 65% accuracy target (65.6% exact-tier, 82.8% adjacent-tier, macro F1 = 0.661). Ablation across Random Forest, XGBoost, and the ensemble confirms that the ensemble provides the best trade-off across all metrics.  
+**2. Clustering solution finalized:** We compared five clustering algorithms on the same feature matrix (k=3). K-means emerged as the primary method based on the best Calinski–Harabasz index (26,564) and lowest Davies–Bouldin index (0.95) among the well-separated methods, yielding three interpretable archetypes. UMAP embeddings were computed for 2D visualization.  
+**3. Interactive dashboard implemented:** The Streamlit dashboard uses pre-computed artifacts (UMAP embeddings, cluster statistics, and feature importance) to render a behavioral map, tier × phase time-usage heatmap, and archetype comparison panel for analyzing player behavior and skill patterns.  
+**4. Evaluation and documentation complete:** We report adjacent-tier accuracy and top-2 tier accuracy to characterize model confidence, validated archetypes through feedback from chess-playing classmates, and produced all final visualizations and model artifacts.
 
-#### 6.3 Risks and Mitigation Strategies
-These three risks need careful attention during the rest of the project:  
-**Classification accuracy ceiling:** Because Elo tier boundaries are fuzzy (e.g., 1598 vs. 1602 in different tiers), exact-tier accuracy may have a ceiling, so we will test the ensemble, improve features with engine evaluations, or shift to Elo regression or two-tier classification if needed.  
-**Quality of heuristic accuracy features:** Because centipawn loss and blunder rates are heuristic approximations without engine analysis, we will test whether running Stockfish on a stratified sample improves feature quality and model performance within available compute time.  
-**Dashboard delivery timeline.** Since the dashboard is the most time-intensive task, we will prioritize the three core views and treat additional visualizations as stretch goals while using pre-computed artifacts to avoid rerunning the full pipeline.
+#### 6.3 Risks and Mitigations
+**Classification accuracy ceiling:** The fuzzy nature of Elo tier boundaries was mitigated by reducing from four tiers to three (Beginner, Intermediate, Advanced), which meaningfully improved classification accuracy. Adjacent-tier accuracy of 82.8% confirms that the remaining errors are concentrated at tier boundaries.  
+**Quality of heuristic accuracy features:** Centipawn loss and blunder rates are heuristic approximations without full engine analysis. The high relative importance of `num_moves` and time-based features (vs. engine accuracy features) suggests behavioral signals are sufficient for tier classification; full engine evaluation remains a promising avenue for future improvement.  
+**Dashboard delivery timeline:** The dashboard was implemented with five interactive views driven by precomputed artifacts, keeping the front end responsive on modest laptops and decoupling it from the heavy offline pipeline.
 
 #### 7. Final Results and Visual Analytics System
 
@@ -97,36 +96,50 @@ These three risks need careful attention during the rest of the project:
 By the end of the semester, we implemented the complete ChessInsight pipeline and front-end system described in our proposal and progress report. The final architecture consists of the following modules:
 - **Data Ingestion and Curation:** Chunk-based PGN parser, PGN-to-parquet conversion, and time-control tagging that feed into downstream feature extraction.
 - **Feature Engineering:** Game- and player-level features capturing time usage, position complexity, error profiles, opening style, and color asymmetry (e.g., white vs. black accuracy gaps). These are stored as `game_features.parquet` and `player_features.parquet`.
-- **Modeling and Evaluation:** A family of skill-tier classifiers (Random Forest, XGBoost, and a soft-voting ensemble) and clustering pipelines (k-means and Birch) with saved artifacts for reproducible evaluation and visualization.
+- **Modeling and Evaluation:** A family of skill-tier classifiers (Random Forest, XGBoost, and a soft-voting ensemble) and a k-means clustering pipeline (benchmarked against hierarchical, GMM, DBSCAN, and Birch) with saved artifacts for reproducible evaluation and visualization.
 - **Visualization & Interaction:** A Streamlit dashboard and Dash prototype that load all artifacts from disk and expose them via linked interactive views. This separates heavy offline computation from lightweight, responsive front-end interaction.
 
 All stages are coordinated by a single driver script, `run_analysis.py`, which can be re-executed on new datasets or synthetic data to regenerate the entire pipeline.
 
 #### 7.2 Final Classification Performance
-We evaluated three models on the held-out test set of **49,345** samples:
-- **Random Forest (baseline):** Test accuracy ≈ **42.6%**, adjacent accuracy ≈ **55.6%**, macro F1 ≈ **0.425**.
-- **XGBoost:** Slightly higher exact accuracy (≈ **44–45%**) and macro F1 than the Random Forest, particularly improving discrimination between Advanced and Expert tiers.
-- **Soft-voting Ensemble (RF + XGBoost):** Achieved our best performance with **≈47% exact-tier accuracy**, **≈63% adjacent accuracy**, and macro F1 close to **0.46**, while retaining similar calibration as the individual learners.
+We evaluated three models on the held-out test set of **6,692** samples drawn from **44,613** players (those with ≥5 games), trained on 31,229 samples balanced to 44,082 via SMOTE across three tiers (Beginner, Intermediate, Advanced):
 
-The majority of errors remain between neighboring tiers, which suggests inherent ambiguity in discretizing Elo into four buckets. From a user perspective, adjacent accuracy and calibrated probabilities provide a more realistic picture of model reliability than raw 0/1 accuracy.
+| Model | Test Accuracy | Adjacent Accuracy (±1) | Macro F1 |
+|---|---|---|---|
+| Random Forest | **64.4%** | **82.4%** | **0.648** |
+| XGBoost | **65.0%** | **82.4%** | **0.655** |
+| Soft-voting Ensemble (RF + XGBoost + GB) | **65.6%** | **82.8%** | **0.661** |
+
+The ensemble is the best-performing model and **meets the ≥65% accuracy target set in the proposal**. For context, a majority-class baseline (always predicting Intermediate) would achieve only 47.1% on this test set, so the ensemble represents a substantial 18-point improvement. Per-class recall from the ensemble confusion matrix is: Beginner 69.1%, Advanced 66.8%, Intermediate 63.1% — Intermediate is the hardest tier to classify because it borders both other classes. The majority of errors are between neighboring tiers (e.g., Intermediate vs. Advanced), confirming that the model’s mistakes are near decision boundaries rather than catastrophic cross-tier errors.
 
 #### 7.3 Feature Importance and Behavioral Drivers
-Across all models, **time-allocation features** remain the dominant predictors of skill:
-- Middlegame average time, opening/endgame time balance, and time-trouble frequency together account for more than half of total feature importance.
-- Engine-based accuracy measures (blunder rate, mistake rate, average centipawn loss) contribute additional signal but are less predictive than how players allocate their time.
-- Opening repertoire richness (entropy over ECO families) and color-asymmetry features (white vs. black accuracy and time differences) add nuanced information, helping distinguish more "balanced" players from those who overperform with one color.
+Across all models, the top predictive features in the ensemble are:
+1. **`num_moves`** (game length, importance ≈ 9.9%) — the single strongest predictor, reflecting that higher-skilled players sustain longer, more contested games.
+2. **`avg_time_middlegame`** (≈ 7.6%) — time spent per move in the middlegame, the strongest time-allocation feature.
+3. **`avg_position_complexity`** (≈ 6.4%) and **`piece_activity_score`** (≈ 5.6%) — engine-derived structural features.
+4. **`material_imbalance_freq`** (≈ 4.5%), **`time_variance_opening`** (≈ 3.6%), and **`book_deviation_move`** (≈ 3.0%) round out the top features.
 
-These findings reinforce prior cognitive science results that stronger players rely on rapid pattern recognition and maintain stable time management under pressure, while weaker players exhibit more volatile time usage and collapse more frequently in time trouble.
+Time-allocation features (middlegame time, endgame time, opening time variance, low-time move ratio) together account for roughly 30–35% of ensemble feature importance. Engine-based accuracy measures contribute additional signal but are individually less predictive than game-length and time-management features. These findings reinforce prior cognitive science results that stronger players maintain stable, deliberate time management and sustain longer competitive games, while weaker players exhibit more volatile time usage.
 
 #### 7.4 Final Clustering and Player Archetypes
-We finalized our clustering analysis using **Birch** with an effective cluster count of **5–6 archetypes**, chosen via internal metrics and qualitative inspection. The final Birch model achieved a **silhouette score ≈ 0.29** and **Davies–Bouldin index ≈ 1.02**, improving substantially over the baseline k-means configuration. Qualitative inspection surfaced the following representative archetypes:
-- **Deliberate Strategists:** Higher-than-average Elo, high middlegame time, low time-trouble frequency, and low blunder rates.
-- **Fast Tacticians:** Advanced/Expert players with lower time-per-move but acceptable error rates, often concentrated in Blitz/Bullet time controls.
-- **Time Scramblers:** Intermediate players who frequently enter severe time trouble and exhibit high blunder rates in the endgame.
-- **Opening Specialists:** Players with high opening-entropy and aggressive ECO codes who score well in the opening but see accuracy fall off in complex middlegames.
-- **Swingy Improvers:** Players with high accuracy volatility and mixed results, often transitioning between tiers.
+We compared five clustering algorithms (k-means, hierarchical, DBSCAN, GMM, Birch) on the same PCA-reduced feature matrix (k=3, 2 PCA components explaining 42.6% variance). Results are summarized below:
 
-These archetypes are represented visually in the 2D embedding space derived from t-SNE over the PCA-reduced features, with color encoded either by cluster or skill tier.
+| Method | Silhouette | Calinski–Harabasz | Davies–Bouldin |
+|---|---|---|---|
+| **K-Means** | **0.340** | **26,564** | **0.950** |
+| Hierarchical | 0.290 | 20,926 | 1.045 |
+| GMM | 0.321 | 22,276 | 1.033 |
+| Birch | 0.240 | 13,220 | 1.159 |
+| DBSCAN | 0.658† | 339 | 3.142 |
+
+†DBSCAN’s high silhouette is driven by a large noise cluster; its very low CH and high DB indicate poor global separation.
+
+K-means with k=3 achieves the best Calinski–Harabasz index (26,564) and lowest Davies–Bouldin index (0.950) among well-separated methods and is adopted as the final clustering method. A silhouette sweep over k=2–5 identified k=2 (silhouette=0.361) as the formal optimum, but a two-cluster solution produces only a coarse high-skill vs. low-skill partition; k=3 (silhouette=0.340) yields three behaviorally distinct archetypes that map clearly onto recognizable playing styles, and its CH and DB scores are superior to all other methods at k=3. The three identified archetypes are:
+- **Time Scramblers** (17,581 players, avg Elo 1748): Fast players who thrive under time pressure; highest average skill level.
+- **Positional Grinders** (16,177 players, avg Elo 1715): Players who maintain active pieces in controlled, less complex positions; medium skill level.
+- **Tactical Battlers** (10,855 players, avg Elo 1400): Players who seek complex tactical positions with material imbalances; still developing their skills.
+
+These archetypes are represented visually in the 2D UMAP embedding space over the PCA-reduced features, with color encoded either by cluster or skill tier.
 
 #### 7.5 Final Visual Analytics Dashboard
 The final Streamlit dashboard operationalizes our models into an interactive visual system, with the following key views:
@@ -138,7 +151,7 @@ The final Streamlit dashboard operationalizes our models into an interactive vis
   - Search for a specific player handle to highlight their position, cluster, archetype, and basic stats.
 - **Time Analysis Tab:** Presents heatmaps of average time per move by phase and tier, as well as bar charts of time variance and time-trouble frequency, revealing how stronger players maintain steadier time profiles and avoid time scrambles.
 - **Classification Tab:** Shows the normalized confusion matrix, summary metrics (accuracy, adjacent accuracy, macro precision/recall/F1), and feature-importance plots, enabling users to understand both what the model learned and where it fails.
-- **Cluster Analysis Tab:** Summarizes cluster sizes, average Elo per cluster, tier composition within each archetype, and internal clustering metrics for k-means vs. Birch.
+- **Cluster Analysis Tab:** Summarizes cluster sizes, average Elo per cluster, tier composition within each archetype, and the algorithm comparison table (k-means, hierarchical, GMM, DBSCAN, Birch) to explain why k-means was selected as the final method.
 
 All views are driven entirely by precomputed artifacts, so the dashboard is responsive even on modest laptops.
 
